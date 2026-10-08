@@ -1,0 +1,8 @@
+{
+  "name": "برنامج الاستلامات للفروع | Branch Reception Hub",
+  "description": "برنامج الاستلامات للفروع - نظام احترافي لمراجعة واستلام فواتير البيع وأذونات الفروع، مسح سريع للباركود، كشف فوارق العجز والزيادة تلقائياً، وتصدير شيتات الإكسيل متعددة الصفحات.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

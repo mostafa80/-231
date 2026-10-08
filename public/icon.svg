@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)" />
+  <rect x="16" y="16" width="480" height="480" rx="92" fill="none" stroke="#334155" stroke-width="4" />
+  
+  <!-- Clipboard / Invoice Body -->
+  <rect x="120" y="100" width="272" height="320" rx="24" fill="#ffffff" />
+  
+  <!-- Clipboard Top Clip -->
+  <path d="M200 80 H312 V116 H200 Z" fill="#475569" rx="8" />
+  <circle cx="256" cy="98" r="8" fill="#e2e8f0" />
+  
+  <!-- Barcode Lines inside Invoice -->
+  <rect x="156" y="146" width="16" height="42" fill="#0f172a" />
+  <rect x="180" y="146" width="8" height="42" fill="#0f172a" />
+  <rect x="196" y="146" width="24" height="42" fill="#0f172a" />
+  <rect x="228" y="146" width="12" height="42" fill="#0f172a" />
+  <rect x="248" y="146" width="20" height="42" fill="#0f172a" />
+  <rect x="276" y="146" width="8" height="42" fill="#0f172a" />
+  <rect x="292" y="146" width="28" height="42" fill="#0f172a" />
+  <rect x="328" y="146" width="14" height="42" fill="#0f172a" />
+  
+  <!-- Horizontal receipt lines -->
+  <rect x="156" y="210" width="200" height="8" rx="4" fill="#cbd5e1" />
+  <rect x="156" y="234" width="150" height="8" rx="4" fill="#e2e8f0" />
+  <rect x="156" y="258" width="180" height="8" rx="4" fill="#e2e8f0" />
+  
+  <!-- Checkmark Badge on Receipt -->
+  <circle cx="340" cy="350" r="56" fill="url(#accent)" />
+  <path d="M316 350 L332 366 L366 332" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+  
+  <!-- Offline Cloud / Lightning Badge -->
+  <circle cx="160" cy="350" r="44" fill="url(#gold)" />
+  <path d="M164 322 L146 348 H162 L156 378 L176 348 H160 Z" fill="#ffffff" />
+</svg>
