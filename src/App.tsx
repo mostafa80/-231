@@ -28,6 +28,9 @@ import { analyzeTransferRoute } from './utils/routeAnalyzer';
 import { InvoiceDiscrepancyInspector } from './components/InvoiceDiscrepancyInspector';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { OfflineGuideModal } from './components/OfflineGuideModal';
+import { useThemeManager } from './hooks/useThemeManager';
+import { ThemeSettingsModal } from './components/ThemeSettingsModal';
+import { ExeConverterModal } from './components/ExeConverterModal';
 
 const MULTI_RETURNS_STORAGE_KEY = 'jard_multi_returns_hub_v2';
 const AUTO_SAVE_INTERVAL = 3 * 60 * 1000; // 3 minutes
@@ -53,6 +56,18 @@ export default function App() {
   const [editingItem, setEditingItem] = useState<JardItem | null>(null);
   const [isNewReturnModalOpen, setIsNewReturnModalOpen] = useState<boolean>(false);
   const [isOfflineGuideOpen, setIsOfflineGuideOpen] = useState<boolean>(false);
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState<boolean>(false);
+  const [isExeModalOpen, setIsExeModalOpen] = useState<boolean>(false);
+
+  // Theme & Typography Manager
+  const {
+    config: themeConfig,
+    setTheme,
+    setFont,
+    setFontSize,
+    setTabularNums,
+    resetDefaults: resetThemeDefaults,
+  } = useThemeManager();
 
   // Helper to trigger message
   const showMessage = useCallback((text: string, type: 'success' | 'error' | 'info') => {
@@ -702,6 +717,8 @@ export default function App() {
           onLoadDemoData={handleLoadDemoData}
           onDownloadTemplate={downloadSampleExcelTemplate}
           onOpenOfflineGuide={() => setIsOfflineGuideOpen(true)}
+          onOpenThemeSettings={() => setIsThemeModalOpen(true)}
+          onOpenExeConverter={() => setIsExeModalOpen(true)}
         />
 
         {/* Sessions & Tabs Bar */}
@@ -872,6 +889,26 @@ export default function App() {
       <OfflineGuideModal
         isOpen={isOfflineGuideOpen}
         onClose={() => setIsOfflineGuideOpen(false)}
+        lang={lang}
+      />
+
+      {/* Theme & Fonts Customizer Modal */}
+      <ThemeSettingsModal
+        isOpen={isThemeModalOpen}
+        onClose={() => setIsThemeModalOpen(false)}
+        config={themeConfig}
+        onSetTheme={setTheme}
+        onSetFont={setFont}
+        onSetFontSize={setFontSize}
+        onSetTabularNums={setTabularNums}
+        onResetDefaults={resetThemeDefaults}
+        lang={lang}
+      />
+
+      {/* Windows EXE Desktop App Converter Modal */}
+      <ExeConverterModal
+        isOpen={isExeModalOpen}
+        onClose={() => setIsExeModalOpen(false)}
         lang={lang}
       />
     </div>

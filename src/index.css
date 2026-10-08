@@ -1,5 +1,84 @@
 @import "tailwindcss";
 
+:root {
+  --app-font-family: 'Cairo', 'Plus Jakarta Sans', sans-serif;
+  --font-scale: 1;
+  --theme-accent: #dc2626;
+  --theme-accent-hover: #b91c1c;
+  --theme-header-bg: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #1e293b 100%);
+  --theme-card-border: #e2e8f0;
+}
+
+body {
+  font-family: var(--app-font-family);
+  font-size: calc(1rem * var(--font-scale, 1));
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Theme Varients */
+[data-theme="somuch-red"] {
+  --theme-accent: #dc2626;
+  --theme-accent-hover: #b91c1c;
+  --theme-header-bg: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #1e293b 100%);
+}
+
+[data-theme="dark-indigo"] {
+  --theme-accent: #4f46e5;
+  --theme-accent-hover: #4338ca;
+  --theme-header-bg: linear-gradient(135deg, #030712 0%, #1e1b4b 60%, #312e81 100%);
+}
+
+[data-theme="emerald"] {
+  --theme-accent: #059669;
+  --theme-accent-hover: #047857;
+  --theme-header-bg: linear-gradient(135deg, #022c22 0%, #064e3b 50%, #0f172a 100%);
+}
+
+[data-theme="royal-navy"] {
+  --theme-accent: #0284c7;
+  --theme-accent-hover: #0369a1;
+  --theme-header-bg: linear-gradient(135deg, #082f49 0%, #0c4a6e 50%, #0369a1 100%);
+}
+
+[data-theme="gold-luxury"] {
+  --theme-accent: #d97706;
+  --theme-accent-hover: #b45309;
+  --theme-header-bg: linear-gradient(135deg, #000000 0%, #1c1917 50%, #292524 100%);
+}
+
+[data-theme="cyber-violet"] {
+  --theme-accent: #c026d3;
+  --theme-accent-hover: #a21caf;
+  --theme-header-bg: linear-gradient(135deg, #18052e 0%, #3b0764 50%, #581c87 100%);
+}
+
+[data-theme="clean-light"] {
+  --theme-accent: #0284c7;
+  --theme-accent-hover: #0369a1;
+  --theme-header-bg: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 60%, #e2e8f0 100%);
+}
+
+/* Font Size Scales */
+[data-font-size="compact"] {
+  --font-scale: 0.92;
+}
+
+[data-font-size="normal"] {
+  --font-scale: 1;
+}
+
+[data-font-size="large"] {
+  --font-scale: 1.08;
+}
+
+[data-font-size="xlarge"] {
+  --font-scale: 1.18;
+}
+
+.theme-header {
+  background: var(--theme-header-bg);
+}
+
 @keyframes screenSuccess {
   0% { background-color: #bbf7d0; }
   100% { background-color: transparent; }

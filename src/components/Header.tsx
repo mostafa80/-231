@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Globe, Sparkles, FileSpreadsheet, WifiOff, Zap } from 'lucide-react';
+import { Volume2, VolumeX, Globe, Sparkles, FileSpreadsheet, WifiOff, Zap, Palette, Laptop } from 'lucide-react';
 import { Language } from '../types';
 import { SoMuchLogo } from './SoMuchLogo';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -12,6 +12,8 @@ interface HeaderProps {
   onLoadDemoData: () => void;
   onDownloadTemplate: () => void;
   onOpenOfflineGuide: () => void;
+  onOpenThemeSettings: () => void;
+  onOpenExeConverter: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,6 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLoadDemoData,
   onDownloadTemplate,
   onOpenOfflineGuide,
+  onOpenThemeSettings,
+  onOpenExeConverter,
 }) => {
   const isAr = lang === 'ar';
 
@@ -60,6 +64,26 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-wrap items-center gap-2 self-stretch lg:self-auto justify-end">
           {/* In-App PWA Install Button */}
           <PWAInstallButton lang={lang} onOpenOfflineGuide={onOpenOfflineGuide} />
+
+          {/* Windows EXE Desktop App Button */}
+          <button
+            onClick={onOpenExeConverter}
+            title={isAr ? 'تحويل وتشغيل البرنامج بصيغة EXE للكمبيوتر' : 'Windows Desktop EXE converter'}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 transition-all active:scale-95 cursor-pointer shadow-xs"
+          >
+            <Laptop className="w-3.5 h-3.5 text-blue-600" />
+            <span className="font-bold">{isAr ? 'تحويل لـ EXE 💻' : 'EXE App 💻'}</span>
+          </button>
+
+          {/* Theme & Fonts Customizer Button */}
+          <button
+            onClick={onOpenThemeSettings}
+            title={isAr ? 'تخصيص الثيم اللوني ونوع وحجم الخط' : 'Customize theme & fonts'}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition-all active:scale-95 cursor-pointer shadow-xs"
+          >
+            <Palette className="w-3.5 h-3.5 text-indigo-600" />
+            <span>{isAr ? 'الثيم والخطوط 🎨' : 'Themes & Fonts'}</span>
+          </button>
 
           {/* Offline Guide Button */}
           <button
