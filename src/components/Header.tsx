@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Globe, Sparkles, FileSpreadsheet, WifiOff, Zap, Palette, Laptop } from 'lucide-react';
+import { Volume2, VolumeX, Globe, Sparkles, FileSpreadsheet, WifiOff, Zap, Palette, Laptop, FilePlus2 } from 'lucide-react';
 import { Language } from '../types';
 import { SoMuchLogo } from './SoMuchLogo';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -10,6 +10,7 @@ interface HeaderProps {
   soundEnabled: boolean;
   onToggleSound: () => void;
   onLoadDemoData: () => void;
+  onStartEmptySession?: () => void;
   onDownloadTemplate: () => void;
   onOpenOfflineGuide: () => void;
   onOpenThemeSettings: () => void;
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   soundEnabled,
   onToggleSound,
   onLoadDemoData,
+  onStartEmptySession,
   onDownloadTemplate,
   onOpenOfflineGuide,
   onOpenThemeSettings,
@@ -104,6 +106,18 @@ export const Header: React.FC<HeaderProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
             <span>{isAr ? 'بيانات تجريبية' : 'Demo Data'}</span>
           </button>
+
+          {/* Start Clean / Empty Session */}
+          {onStartEmptySession && (
+            <button
+              onClick={onStartEmptySession}
+              title={isAr ? 'بدء جلسة عمل جديدة فارغة من الصفر بدون أي فاتورة أو ماستر' : 'Start clean empty session without any preloaded invoice'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 transition-all active:scale-95 cursor-pointer shadow-xs"
+            >
+              <FilePlus2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>{isAr ? 'بدء بدون فاتورة 📄' : 'Start Empty 📄'}</span>
+            </button>
+          )}
 
           {/* Download Template */}
           <button

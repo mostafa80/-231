@@ -70,13 +70,18 @@ export const ImportSection: React.FC<ImportSectionProps> = ({
             />
           </div>
 
-          {itemsCount > 0 && session && (
+          {itemsCount > 0 && session ? (
             <div className="mt-2.5 flex items-center gap-1.5 text-xs font-bold text-red-700 bg-white/80 px-2.5 py-1.5 rounded-lg border border-rose-200">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
               <span>
                 {session.returnMeta.branch ? `[${session.returnMeta.branch}] - ` : ''}
                 {isAr ? `(${itemsCount} صنف معتمد بالفاتورة)` : `(${itemsCount} items in invoice)`}
               </span>
+            </div>
+          ) : (
+            <div className="mt-2.5 flex items-center gap-1.5 text-xs font-bold text-amber-900 bg-amber-100/80 px-2.5 py-1.5 rounded-lg border border-amber-300">
+              <span className="text-amber-700">⚠️</span>
+              <span>{isAr ? 'لم يتم رفع شيت الفاتورة بعد (مطلوب لبدء المسح)' : 'Invoice sheet not uploaded yet (required to scan)'}</span>
             </div>
           )}
 
@@ -118,11 +123,14 @@ export const ImportSection: React.FC<ImportSectionProps> = ({
               </span>
             </div>
           ) : (
-            <p className="text-[11px] text-amber-800/80 mt-2">
-              {isAr
-                ? 'يفيد في التعرف الفوري على أي صنف غير مسجل بإذن المرتجع.'
-                : 'Helps identify any extra scanned item not listed in return invoice.'}
-            </p>
+            <div className="mt-2 text-xs font-bold text-amber-900 bg-amber-100/80 px-2.5 py-1.5 rounded-lg border border-amber-300 flex items-center gap-1.5">
+              <span>⚠️</span>
+              <span>
+                {isAr
+                  ? 'لم يتم رفع شيت الماستر بعد (مطلوب لبدء المسح)'
+                  : 'Master catalog not uploaded yet (required to scan)'}
+              </span>
+            </div>
           )}
         </div>
       </div>

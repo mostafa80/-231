@@ -25,6 +25,8 @@ interface ScannerSectionProps {
   canUndo: boolean;
   message: { text: string; type: 'success' | 'error' | 'info' } | null;
   lang: Language;
+  hasInvoice?: boolean;
+  hasMaster?: boolean;
 }
 
 export const ScannerSection: React.FC<ScannerSectionProps> = ({
@@ -39,9 +41,12 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
   canUndo,
   message,
   lang,
+  hasInvoice,
+  hasMaster,
 }) => {
   const [barcode, setBarcode] = useState('');
-  const [manualQty, setManualQty] = useState('1');
+  const [manualQty, setManualQty] = useState(''); // Initial value is empty as requested
+  const [qtyError, setQtyError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ReturnItem[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -49,7 +54,12 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
   const [isSearchingBarcode, setIsSearchingBarcode] = useState(false);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const qtyInputRef = useRef<HTMLInputElement>(null);
   const isAr = lang === 'ar';
+
+  const isInvoiceLoaded = hasInvoice !== undefined ? hasInvoice : Boolean(session && Object.keys(session.inventoryMap).length > 0);
+  const isMasterLoaded = hasMaster !== undefined ? hasMaster : Boolean(Object.keys(masterCatalog).length > 0);
+  const canScan = isInvoiceLoaded && isMasterLoaded;
 
   // Live item preview when barcode changes
   useEffect(() => {
@@ -106,23 +116,51 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
   }, [searchQuery, session, masterCatalog]);
 
   const handleBarcodeSubmit = (isSubtract: boolean = false) => {
+    if (!canScan) {
+      setQtyError(isAr ? '⚠️ لا يمكن مسح أي صنف قبل رفع شيت الفاتورة وشيت الماستر أولاً!' : 'Please upload Invoice and Master sheets first!');
+      return;
+    }
+
     const code = barcode.trim();
-    if (!code) return;
+    if (!code) {
+      barcodeInputRef.current?.focus();
+      return;
+    }
 
     let qty = 1;
     if (!autoAdd) {
-      qty = parseInt(manualQty, 10) || 1;
+      if (!manualQty.trim()) {
+        setQtyError(isAr ? '⚠️ يجب إدخال عدد القطع المستلمة بالأرقام (1 إلى 30 قطعة)' : 'Please enter quantity in numbers (1 to 30)');
+        qtyInputRef.current?.focus();
+        return;
+      }
+      const parsed = parseInt(manualQty, 10);
+      if (isNaN(parsed) || parsed < 1) {
+        setQtyError(isAr ? '⚠️ أدخل رقماً صحيحاً للكمية (من 1 إلى 30)' : 'Enter a valid number (1 to 30)');
+        qtyInputRef.current?.focus();
+        return;
+      }
+      if (parsed > 30) {
+        setQtyError(isAr ? '⚠️ أقصى كمية مسموح بإدخالها هي 30 قطعة فقط!' : 'Maximum allowed quantity is 30 pieces!');
+        qtyInputRef.current?.focus();
+        return;
+      }
+      qty = parsed;
     }
-    if (qty <= 0) qty = 1;
 
+    setQtyError(null);
     onAddItem(code, qty, isSubtract, condition);
     setBarcode('');
+    setManualQty('');
     setMatchedItem(null);
-    if (!autoAdd) setManualQty('1');
     barcodeInputRef.current?.focus();
   };
 
   const handleSelectItemFromSearch = (item: ReturnItem) => {
+    if (!canScan) {
+      setQtyError(isAr ? '⚠️ يرجى رفع شيت الفاتورة وشيت الماستر أولاً!' : 'Upload sheets first!');
+      return;
+    }
     setBarcode(item.code);
     setSearchQuery('');
     setShowDropdown(false);
@@ -130,14 +168,20 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
       onAddItem(item.code, 1, false, condition);
       setBarcode('');
       setMatchedItem(null);
-    } else {
       barcodeInputRef.current?.focus();
+    } else {
+      // In manual mode, jump directly to quantity input so user types quantity immediately!
+      setTimeout(() => {
+        qtyInputRef.current?.focus();
+        qtyInputRef.current?.select();
+      }, 50);
     }
   };
 
   const handleClear = () => {
     setBarcode('');
-    setManualQty('1');
+    setManualQty('');
+    setQtyError(null);
     setMatchedItem(null);
     setSearchQuery('');
     setShowDropdown(false);
@@ -260,13 +304,65 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
         </label>
       </div>
 
+      {/* Lockout Notice when sheets are missing */}
+      {!canScan && (
+        <div className="bg-amber-50/90 border-2 border-amber-300 rounded-xl p-3.5 mb-3.5 shadow-xs animate-fadeIn">
+          <div className="flex items-start gap-2.5">
+            <span className="text-xl">🔒</span>
+            <div className="flex-1">
+              <h4 className="text-xs sm:text-sm font-black text-amber-950">
+                {isAr ? 'المسح والاستلام معطّل مؤقتاً (بانتظار رفع الشيتات)' : 'Scanning Locked (Pending File Uploads)'}
+              </h4>
+              <p className="text-xs text-amber-900 font-medium mt-1 leading-relaxed">
+                {isAr
+                  ? 'لبدء مسح واستلام الباركود، يلزم أولاً رفع شيت الفاتورة وشيت الماستر من قسم (1. استيراد فاتورة البيع والماستر) أعلاه:'
+                  : 'To enable scanning and counting, please upload both the Invoice and Master sheets in section 1 above:'}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                <div
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black border ${
+                    isInvoiceLoaded
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+                  }`}
+                >
+                  <span>{isInvoiceLoaded ? '✅' : '❌'}</span>
+                  <span>{isAr ? 'شيت فاتورة البيع:' : 'Invoice Sheet:'}</span>
+                  <span>{isInvoiceLoaded ? (isAr ? 'تم الرفع' : 'Uploaded') : (isAr ? 'لم يرفع بعد' : 'Missing')}</span>
+                </div>
+
+                <div
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black border ${
+                    isMasterLoaded
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+                  }`}
+                >
+                  <span>{isMasterLoaded ? '✅' : '❌'}</span>
+                  <span>{isAr ? 'شيت ماستر الأصناف:' : 'Master Catalog:'}</span>
+                  <span>{isMasterLoaded ? (isAr ? 'تم الرفع' : 'Uploaded') : (isAr ? 'لم يرفع بعد' : 'Missing')}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barcode Input & Scanner */}
       <div className="space-y-3">
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-            <Barcode className="w-4 h-4 text-red-600" />
-            <span>{isAr ? 'مسح باركود الصنف المستلم:' : 'Scan or type barcode:'}</span>
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Barcode className="w-4 h-4 text-red-600" />
+              <span>{isAr ? 'مسح باركود الصنف المستلم:' : 'Scan or type barcode:'}</span>
+            </label>
+            {!autoAdd && (
+              <span className="text-[11px] font-bold text-slate-500">
+                {isAr ? 'اضغط Enter بعد السكان للانتقال للكمية فوراً' : 'Press Enter to jump to quantity'}
+              </span>
+            )}
+          </div>
+
           <div className="relative">
             <input
               ref={barcodeInputRef}
@@ -276,12 +372,31 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  handleBarcodeSubmit(false);
+                  if (!canScan) return;
+                  const code = barcode.trim();
+                  if (!code) return;
+
+                  if (!autoAdd) {
+                    // Manual mode: hitting Enter jumps directly to the quantity input!
+                    qtyInputRef.current?.focus();
+                    qtyInputRef.current?.select();
+                  } else {
+                    handleBarcodeSubmit(false);
+                  }
                 }
               }}
-              placeholder={isAr ? 'أدخل أو وجه الباركود هنا...' : 'Scan barcode here...'}
+              disabled={!canScan}
+              placeholder={
+                !canScan
+                  ? (isAr ? '🔒 معطّل - يرجى رفع شيت الفاتورة والماستر أولاً للبدء...' : '🔒 Locked - Upload Invoice & Master first...')
+                  : (isAr ? 'أدخل أو وجه الباركود هنا...' : 'Scan barcode here...')
+              }
               autoFocus
-              className="w-full text-base sm:text-lg font-bold font-mono text-center tracking-wider bg-slate-50 border-2 border-slate-300 rounded-xl py-2.5 px-4 focus:bg-white focus:border-red-600 focus:ring-4 focus:ring-red-100 transition-all outline-hidden shadow-2xs"
+              className={`w-full text-base sm:text-lg font-bold font-mono text-center tracking-wider rounded-xl py-2.5 px-4 transition-all outline-hidden shadow-2xs ${
+                !canScan
+                  ? 'bg-slate-100 text-slate-400 border-2 border-slate-200 cursor-not-allowed'
+                  : 'bg-slate-50 border-2 border-slate-300 focus:bg-white focus:border-red-600 focus:ring-4 focus:ring-red-100'
+              }`}
             />
             {isSearchingBarcode && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -319,23 +434,61 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
 
         {/* Manual Quantity Input (visible when auto-add is OFF) */}
         {!autoAdd && (
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              {isAr ? '🔢 الكمية المستلمة (للوضع اليدوي):' : '🔢 Quantity (Manual Mode):'}
-            </label>
-            <input
-              type="number"
-              min="1"
-              value={manualQty}
-              onChange={(e) => setManualQty(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleBarcodeSubmit(false);
-                }
-              }}
-              className="w-full text-sm font-bold bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-center focus:bg-white focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-all outline-hidden"
-            />
+          <div className="bg-amber-50/70 border-2 border-amber-300/80 rounded-xl p-3.5 transition-all">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-black text-amber-950">
+                {isAr ? '🔢 الكمية المستلمة (للوضع اليدوي):' : '🔢 Quantity (Manual Mode):'}
+              </label>
+              <span className="text-[11px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-200">
+                {isAr ? 'أرقام فقط • الحد الأقصى 30 قطعة' : 'Digits only • Max 30 pieces'}
+              </span>
+            </div>
+
+            <div className="relative">
+              <input
+                ref={qtyInputRef}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={manualQty}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const digits = raw.replace(/\D/g, '');
+                  if (!digits) {
+                    setManualQty('');
+                    setQtyError(null);
+                    return;
+                  }
+                  const num = parseInt(digits, 10);
+                  if (num > 30) {
+                    setManualQty('30');
+                    setQtyError(isAr ? '⚠️ أقصى كمية مسموح بها هي 30 قطعة فقط!' : 'Maximum allowed quantity is 30 pieces!');
+                  } else {
+                    setManualQty(digits);
+                    setQtyError(null);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleBarcodeSubmit(false);
+                  }
+                }}
+                disabled={!canScan}
+                placeholder={isAr ? 'اكتب عدد القطع بالأرقام (1 إلى 30)...' : 'Type quantity in digits (1 to 30)...'}
+                className="w-full text-base sm:text-lg font-black text-center bg-white border-2 border-amber-400 rounded-xl py-2 px-3 text-slate-900 focus:border-red-600 focus:ring-4 focus:ring-amber-100 transition-all outline-hidden shadow-2xs"
+              />
+            </div>
+
+            {qtyError ? (
+              <p className="text-xs font-bold text-rose-600 mt-1.5 animate-fadeIn">
+                {qtyError}
+              </p>
+            ) : (
+              <p className="text-[11px] text-amber-800/80 mt-1">
+                {isAr ? '💡 اضغط Enter بعد كتابة العدد لتسجيل الاستلام فوراً والرجوع لمسح الباركود' : '💡 Press Enter after typing quantity to submit and return to barcode'}
+              </p>
+            )}
           </div>
         )}
 
@@ -343,8 +496,13 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
           <button
             type="button"
+            disabled={!canScan}
             onClick={() => handleBarcodeSubmit(false)}
-            className="col-span-1 sm:col-span-2 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl font-extrabold text-xs sm:text-sm bg-red-600 hover:bg-red-700 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+            className={`col-span-1 sm:col-span-2 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-xs ${
+              !canScan
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : 'bg-red-600 hover:bg-red-700 text-white'
+            }`}
           >
             <Plus className="w-4 h-4" />
             <span>{isAr ? 'إضافة استلام' : 'Add Count'}</span>
@@ -352,8 +510,13 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
 
           <button
             type="button"
+            disabled={!canScan}
             onClick={() => handleBarcodeSubmit(true)}
-            className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl font-extrabold text-xs bg-orange-500 hover:bg-orange-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+            className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl font-extrabold text-xs transition-all active:scale-95 cursor-pointer shadow-xs ${
+              !canScan
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : 'bg-orange-500 hover:bg-orange-600 text-white'
+            }`}
           >
             <Minus className="w-4 h-4" />
             <span>{isAr ? 'خصم' : 'Subtract'}</span>

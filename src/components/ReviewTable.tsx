@@ -21,6 +21,7 @@ interface ReviewTableProps {
   onManualSave: () => void;
   onResetSession: () => void;
   highlightedCode?: string | null;
+  lastScannedCode?: string | null;
   lang: Language;
   filter?: FilterType;
   onFilterChange?: (filter: FilterType) => void;
@@ -37,6 +38,7 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
   onManualSave,
   onResetSession,
   highlightedCode,
+  lastScannedCode,
   lang,
   filter,
   onFilterChange,
@@ -52,6 +54,13 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   const isAr = lang === 'ar';
+
+  // Automatically jump to page 1 whenever a new item is scanned so it is always seen at the top
+  React.useEffect(() => {
+    if (lastScannedCode) {
+      setCurrentPage(1);
+    }
+  }, [lastScannedCode]);
 
   // Extract categories & subcategories from active session
   const { mainCategories, fullCategories } = useMemo(() => {
@@ -87,6 +96,11 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
         if (!matchMain && !matchFull) return false;
       }
 
+      // Ensure last scanned item is always visible so it is never hidden by status filters
+      if (lastScannedCode && item.code.toUpperCase() === lastScannedCode.toUpperCase()) {
+        return true;
+      }
+
       // Status filter
       if (currentFilter === 'all') return true;
       if (currentFilter === 'counted') return jard && jard.countedQty > 0;
@@ -98,12 +112,19 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
       }
       return true;
     }).sort((a, b) => {
-      // Show recently scanned items first
+      // 1. Absolute top priority: Last scanned item appears at index 0 (first row of table)
+      if (lastScannedCode) {
+        const isALast = a.code.toUpperCase() === lastScannedCode.toUpperCase();
+        const isBLast = b.code.toUpperCase() === lastScannedCode.toUpperCase();
+        if (isALast && !isBLast) return -1;
+        if (!isALast && isBLast) return 1;
+      }
+      // 2. Secondary: Recently scanned items by timestamp
       const timeA = session.jardData[a.code.toUpperCase()]?.time || 0;
       const timeB = session.jardData[b.code.toUpperCase()]?.time || 0;
       return timeB - timeA;
     });
-  }, [session, selectedCategory, currentFilter]);
+  }, [session, selectedCategory, currentFilter, lastScannedCode]);
 
   const totalItems = filteredItems.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
@@ -348,7 +369,8 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
               paginatedItems.map((item, rowIdx) => {
                 const key = item.code.toUpperCase();
                 const jard = session?.jardData[key];
-                const isTargetHighlighted = highlightedCode && highlightedCode.toUpperCase() === key;
+                const isLastScanned = Boolean(lastScannedCode && lastScannedCode.toUpperCase() === key);
+                const isTargetHighlighted = (highlightedCode && highlightedCode.toUpperCase() === key) || isLastScanned;
 
                 let rowBg = 'hover:bg-slate-50/80';
                 let diffBadge = <span className="text-slate-400 font-medium">-</span>;
@@ -381,7 +403,9 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
                   diffBadge = <span className="font-bold text-rose-600">-{item.systemQty}</span>;
                 }
 
-                if (isTargetHighlighted) {
+                if (isLastScanned) {
+                  rowBg = 'bg-amber-100/90 ring-3 ring-amber-500 shadow-md font-medium border-y-2 border-amber-400';
+                } else if (isTargetHighlighted) {
                   rowBg = 'bg-red-100/80 ring-2 ring-red-500 shadow-sm animate-pulse';
                 }
 
@@ -390,12 +414,21 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
 
                 return (
                   <tr key={item.code} className={`transition-colors ${rowBg}`}>
-                    <td className="py-2.5 px-2.5 text-center">{statusBadge}</td>
+                    <td className="py-2.5 px-2.5 text-center">
+                      {isLastScanned ? <span className="font-black text-amber-800 text-sm">⭐</span> : statusBadge}
+                    </td>
                     <td className="py-2.5 px-2 text-center font-bold text-amber-900 bg-amber-50/30 border-x border-amber-100 font-mono">
                       {serialNum}
                     </td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-900 max-w-xs truncate" title={item.itemName}>
-                      {item.itemName}
+                    <td className="py-2.5 px-3 font-semibold text-slate-900 max-w-xs" title={item.itemName}>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {isLastScanned && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs animate-bounce flex-shrink-0">
+                            ⭐ {isAr ? 'آخر صنف ممسوح' : 'Last Scanned'}
+                          </span>
+                        )}
+                        <span className="truncate">{item.itemName}</span>
+                      </div>
                     </td>
                     <td className="py-2.5 px-3 text-center font-mono font-semibold text-emerald-800 bg-emerald-50/20 border-x border-emerald-100/60">
                       {item.code}

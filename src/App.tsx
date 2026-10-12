@@ -51,6 +51,7 @@ export default function App() {
 
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
+  const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
 
   // Modals state
   const [editingItem, setEditingItem] = useState<JardItem | null>(null);
@@ -332,7 +333,25 @@ export default function App() {
   ) => {
     if (!activeSession) return;
 
+    // Check if both invoice and master sheets are present (empty mode requirement)
+    const hasInvoice = Object.keys(activeSession.inventoryMap).length > 0;
+    const hasMaster = Object.keys(masterCatalog).length > 0;
+    if (!hasInvoice || !hasMaster) {
+      if (soundEnabled) playAlarmSound();
+      triggerVisualFeedback(false);
+      showMessage(
+        lang === 'ar'
+          ? '🔒 لا يمكن المسح قبل رفع شيت الفاتورة وشيت الماستر أولاً!'
+          : 'Cannot scan until Invoice and Master sheets are uploaded!',
+        'error'
+      );
+      return;
+    }
+
     const key = code.trim().toUpperCase();
+    setLastScannedCode(key);
+    setHighlightedCode(key);
+
     let item = activeSession.inventoryMap[key];
 
     // Check master catalog fallback if not found in active return slip
@@ -704,6 +723,52 @@ export default function App() {
     }
   };
 
+  // Start pure empty session without any preloaded invoice
+  const handleStartEmptySession = () => {
+    if (
+      window.confirm(
+        lang === 'ar'
+          ? 'هل تريد بدء جلسة عمل جديدة فارغة؟ سيتم تفريغ الفاتورة الحالية والبدء من الصفر، ولن يقبل البرنامج أي مسح إلا بعد رفع شيت الفاتورة وشيت الماستر.'
+          : 'Start a clean empty session? No scans will be accepted until you upload both Invoice and Master sheets.'
+      )
+    ) {
+      const emptySession: Session = {
+        id: 'sess_' + Date.now(),
+        title: lang === 'ar' ? 'جلسة جديدة (بانتظار الشيتات)' : 'New Session (Pending Sheets)',
+        inventoryMap: {},
+        jardData: {},
+        undoStack: [],
+        returnMeta: {
+          branch: '',
+          returnNo: '',
+          keeper: '',
+          date: new Date().toISOString().split('T')[0],
+          notes: '',
+        },
+        routeInfo: {
+          isTransfer: false,
+          isDamaged: false,
+          routeType: 'direct',
+          fromBranch: '',
+          toBranch: '',
+          notes: '',
+        },
+      };
+
+      setSessions([emptySession]);
+      setActiveSessionId(emptySession.id);
+      setMasterCatalog({});
+      setLastScannedCode(null);
+      setHighlightedCode(null);
+      showMessage(
+        lang === 'ar'
+          ? '📄 تم بدء جلسة عمل فارغة بنجاح! يرجى رفع شيت الفاتورة وشيت الماستر للبدء.'
+          : '📄 Started clean session! Please upload Invoice and Master sheets to begin.',
+        'info'
+      );
+    }
+  };
+
   return (
     <div className="min-h-screen text-slate-900 pb-20 sm:pb-8">
       {/* Screen Container */}
@@ -715,6 +780,7 @@ export default function App() {
           soundEnabled={soundEnabled}
           onToggleSound={() => setSoundEnabled((s) => !s)}
           onLoadDemoData={handleLoadDemoData}
+          onStartEmptySession={handleStartEmptySession}
           onDownloadTemplate={downloadSampleExcelTemplate}
           onOpenOfflineGuide={() => setIsOfflineGuideOpen(true)}
           onOpenThemeSettings={() => setIsThemeModalOpen(true)}
@@ -756,6 +822,8 @@ export default function App() {
           canUndo={(activeSession?.undoStack.length || 0) > 0}
           message={message}
           lang={lang}
+          hasInvoice={Boolean(activeSession && Object.keys(activeSession.inventoryMap).length > 0)}
+          hasMaster={Boolean(Object.keys(masterCatalog).length > 0)}
         />
 
         {/* Stats 7 Cards */}
@@ -818,6 +886,7 @@ export default function App() {
           onManualSave={() => saveToLocalStorage(true)}
           onResetSession={handleResetSession}
           highlightedCode={highlightedCode}
+          lastScannedCode={lastScannedCode}
           lang={lang}
           filter={activeFilter}
           onFilterChange={setActiveFilter}
