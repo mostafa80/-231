@@ -60,6 +60,36 @@ export default function App() {
   const [isThemeModalOpen, setIsThemeModalOpen] = useState<boolean>(false);
   const [isExeModalOpen, setIsExeModalOpen] = useState<boolean>(false);
 
+  // Animation Toggle State (persisted in LocalStorage)
+  const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('so_much_animations_enabled') !== 'false';
+  });
+
+  useEffect(() => {
+    if (animationsEnabled) {
+      document.documentElement.classList.remove('disable-animations');
+      document.body.classList.remove('disable-animations');
+      localStorage.setItem('so_much_animations_enabled', 'true');
+    } else {
+      document.documentElement.classList.add('disable-animations');
+      document.body.classList.add('disable-animations');
+      localStorage.setItem('so_much_animations_enabled', 'false');
+    }
+  }, [animationsEnabled]);
+
+  const handleToggleAnimations = () => {
+    setAnimationsEnabled((prev) => {
+      const next = !prev;
+      showMessage(
+        next
+          ? (lang === 'ar' ? '✨ تم تفعيل التأثيرات الحركية (الأنيميشن)' : '✨ Animations enabled')
+          : (lang === 'ar' ? '⏸️ تم إيقاف التأثيرات الحركية لتسريع الأداء والاستجابة الفورية' : '⏸️ Animations disabled for maximum speed'),
+        'info'
+      );
+      return next;
+    });
+  };
+
   // Theme & Typography Manager
   const {
     config: themeConfig,
@@ -571,17 +601,17 @@ export default function App() {
     setSessions((prev) => [...prev, newSession]);
     setActiveSessionId(id);
     setIsNewReturnModalOpen(false);
-    showMessage(lang === 'ar' ? 'تم إنشاء إذن جديد بنجاح' : 'New return slip created', 'success');
+    showMessage(lang === 'ar' ? 'تم إنشاء الفاتورة الواردة بنجاح' : 'New inbound invoice tab created', 'success');
   };
 
-  // Reset active session
+  // Reset active session (تصفير الفعلي)
   const handleResetSession = () => {
     if (!activeSession) return;
     if (
       window.confirm(
         lang === 'ar'
-          ? `هل أنت متأكد من تصفير استلام الإذن (${activeSession.title})؟`
-          : `Are you sure you want to reset (${activeSession.title})?`
+          ? `هل أنت متأكد من تصفير الكميات المستلمة (الفعلي) بالكامل للبدء من الصفر؟\nلن يتم حذف بيانات الفاتورة الأصلية (${activeSession.title})، بل سيتم تصفير الأصناف الممسوحة فقط.`
+          : `Are you sure you want to reset all actual counted quantities to zero for (${activeSession.title})?`
       )
     ) {
       setSessions((prev) =>
@@ -594,7 +624,13 @@ export default function App() {
           };
         })
       );
-      showMessage(lang === 'ar' ? 'تم تصفير استلام هذا الإذن' : 'Return reception reset', 'info');
+      setLastScannedCode(null);
+      showMessage(
+        lang === 'ar'
+          ? '🔄 تم تصفير الفعلي بالكامل بنجاح للبدء من الصفر'
+          : '🔄 Actual counted quantities reset to zero',
+        'info'
+      );
     }
   };
 
@@ -655,51 +691,6 @@ export default function App() {
     setTimeout(() => {
       saveToLocalStorage(false);
     }, 150);
-  };
-
-  // Quick Match All items with invoice quantities (for fast auditor validation)
-  const handleQuickMatchAll = () => {
-    if (!activeSession) return;
-    if (
-      window.confirm(
-        lang === 'ar'
-          ? 'هل تريد اعتماد جميع كميات الفاتورة كمطابقة 100% دفعة واحدة؟ يمكنك بعدها تعديل أي أصناف بها عجز أو زيادة فقط.'
-          : 'Mark all items as 100% matched with invoice quantities?'
-      )
-    ) {
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== activeSession.id) return s;
-          const newJard: Record<string, JardItem> = {};
-          Object.values(s.inventoryMap).forEach((it) => {
-            const key = it.code.toUpperCase();
-            newJard[key] = {
-              itemName: it.itemName,
-              code: it.code,
-              systemQty: it.systemQty,
-              soundQty: it.systemQty,
-              damagedQty: 0,
-              countedQty: it.systemQty,
-              price: it.price,
-              cost: it.cost || 0,
-              category: it.category,
-              subcat: it.subcat,
-              fullCategory: it.fullCategory,
-              time: Date.now(),
-            };
-          });
-          return { ...s, jardData: newJard };
-        })
-      );
-      if (soundEnabled) playSuccessBeep();
-      triggerVisualFeedback(true);
-      showMessage(
-        lang === 'ar'
-          ? '✅ تم اعتماد جميع أصناف الفاتورة كمطابقة 100% بنجاح!'
-          : '✅ All invoice items marked as 100% matched',
-        'success'
-      );
-    }
   };
 
   // Load sample demo data
@@ -779,6 +770,8 @@ export default function App() {
           onToggleLang={() => setLang((l) => (l === 'ar' ? 'en' : 'ar'))}
           soundEnabled={soundEnabled}
           onToggleSound={() => setSoundEnabled((s) => !s)}
+          animationsEnabled={animationsEnabled}
+          onToggleAnimations={handleToggleAnimations}
           onLoadDemoData={handleLoadDemoData}
           onStartEmptySession={handleStartEmptySession}
           onDownloadTemplate={downloadSampleExcelTemplate}
@@ -853,7 +846,6 @@ export default function App() {
           }}
           onFilterSelect={setActiveFilter}
           currentFilter={activeFilter}
-          onQuickMatchAll={handleQuickMatchAll}
           onResetCounts={handleResetSession}
           lang={lang}
         />

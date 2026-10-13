@@ -6,7 +6,7 @@ export function analyzeTransferRoute(branch: string = '', notes: string = ''): R
   const isDamaged = /توالف|تالف|منتهي الصلاحية|تستر|عيوب صناعة|كسر|مرتجع تالف/i.test(notesClean);
 
   let dest = 'المكتب / المخزن الرئيسي';
-  let routeType = 'مرتجع مخزن';
+  let routeType = 'فاتورة واردة من المخزن الى الفرع';
 
   if (isTransfer) {
     routeType = 'تحويل بين الفروع';
@@ -18,7 +18,7 @@ export function analyzeTransferRoute(branch: string = '', notes: string = ''): R
     else if (/احمد اونلاين|اونلاين|online/i.test(notesClean)) dest = 'مبيعات أونلاين (أحمد)';
     else if (/المكتب|المخزن/i.test(notesClean)) {
       dest = 'المكتب / المخزن الرئيسي';
-      routeType = 'مرتجع مخزن';
+      routeType = 'فاتورة واردة من المخزن الى الفرع';
     }
   }
 

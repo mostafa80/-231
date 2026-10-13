@@ -152,8 +152,8 @@ export function smartExport(sess: Session): void {
 
   const sheet1Meta: (string | number)[][] = [
     ['🦅 برنامج الاستلامات للفروع | تقرير الاستلام الشامل'],
-    [`🏢 الفرع الراسل: ${branchName}`, `🚚 الوجهة: ${r.toBranch}`, `🔢 رقم الإذن: ${returnNoStr}`],
-    [`📅 تاريخ الإذن: ${returnDateStr}`, `👤 أمين المخزن المستلم: ${keeperStr}`, `📦 نوع الحركة: ${r.routeType}`],
+    [`🏢 الفرع: ${branchName}`, `🚚 الوجهة: ${r.toBranch}`, `🔢 رقم الفاتورة: ${returnNoStr}`],
+    [`📅 تاريخ الفاتورة: ${returnDateStr}`, `👤 أمين المخزن المستلم: ${keeperStr}`, `📦 نوع الحركة: ${r.routeType}`],
     [`📝 الملاحظات: ${sess.returnMeta.notes || '-'}`],
     [''],
     [
@@ -260,7 +260,7 @@ export function smartExport(sess: Session): void {
 
   const sheet2Data: (string | number)[][] = [
     [`🔴 برنامج الاستلامات للفروع | كشف العجوزات فقط`],
-    [`🏢 الفرع: ${branchName}`, `🔢 رقم الإذن: ${returnNoStr}`, `📅 التاريخ: ${returnDateStr}`],
+    [`🏢 الفرع: ${branchName}`, `🔢 رقم الفاتورة: ${returnNoStr}`, `📅 التاريخ: ${returnDateStr}`],
     [`👤 أمين المخزن: ${keeperStr}`, `إجمالي عدد بنود العجز: ${shortageItemsList.length} صنف`],
     [''],
     sheet2Headers,
@@ -328,7 +328,7 @@ export function smartExport(sess: Session): void {
 
   const sheet3Data: (string | number)[][] = [
     [`🟡 برنامج الاستلامات للفروع | كشف الزيادة والفائض فقط`],
-    [`🏢 الفرع: ${branchName}`, `🔢 رقم الإذن: ${returnNoStr}`, `📅 التاريخ: ${returnDateStr}`],
+    [`🏢 الفرع: ${branchName}`, `🔢 رقم الفاتورة: ${returnNoStr}`, `📅 التاريخ: ${returnDateStr}`],
     [`👤 أمين المخزن: ${keeperStr}`, `إجمالي عدد بنود الزيادة: ${surplusItemsList.length} صنف`],
     [''],
     sheet3Headers,
@@ -439,7 +439,7 @@ export function smartExport(sess: Session): void {
   }
 
   const cleanBranch = branchName.replace(/[\\/:?*[\]]/g, '_').trim();
-  const fileReturnNo = sess.returnMeta.returnNo ? `_إذن_${sess.returnMeta.returnNo}` : '';
+  const fileReturnNo = sess.returnMeta.returnNo ? `_فاتورة_${sess.returnMeta.returnNo}` : '';
   const fileName = `استلامات_${cleanBranch}${fileReturnNo}_${returnDateStr}.xlsx`;
 
   XLSX.writeFile(wb, fileName);

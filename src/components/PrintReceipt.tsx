@@ -121,7 +121,7 @@ export const PrintReceipt: React.FC<PrintReceiptProps> = ({ session }) => {
           <b>🚚 الوجهة / الاستلام:</b> {r.toBranch}
         </div>
         <div>
-          <b>🔢 رقم إذن المردود:</b> {returnNo}
+          <b>🔢 رقم الفاتورة الواردة:</b> {returnNo}
         </div>
         <div>
           <b>📅 تاريخ الإذن:</b> {dateStr}

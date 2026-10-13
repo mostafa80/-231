@@ -146,3 +146,13 @@ body {
     display: none !important;
   }
 }
+
+/* Zero Animation / Motion-Reduced mode */
+.disable-animations,
+.disable-animations *,
+.disable-animations *::before,
+.disable-animations *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}

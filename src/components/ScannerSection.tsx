@@ -198,8 +198,8 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
           </div>
           <h2 className="text-sm sm:text-base font-bold text-slate-900">
             {isAr
-              ? 'مسح واستلام المرتجع الفعلي للإذن الحالي'
-              : 'Scan & Receive Actual Items for Active Return'}
+              ? 'مسح واستلام أصناف الفاتورة الواردة من المخزن الى الفرع'
+              : 'Scan & Receive Inbound Invoice Items (Warehouse to Branch)'}
           </h2>
         </div>
       </div>
@@ -208,8 +208,8 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
       <div className="relative mb-3.5">
         <label className="block text-xs font-bold text-slate-600 mb-1">
           {isAr
-            ? '🔍 بحث سريع داخل أصناف هذا الإذن (اسم / باركود / تصنيف):'
-            : '🔍 Quick Search items in this return:'}
+            ? '🔍 بحث سريع داخل أصناف الفاتورة الواردة (اسم / باركود / تصنيف):'
+            : '🔍 Quick Search items in this inbound invoice:'}
         </label>
         <div className="relative">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 rtl:right-3 ltr:left-3 ltr:right-auto" />

@@ -563,14 +563,15 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
           <span>{isAr ? 'حفظ يدوي' : 'Save State'}</span>
         </button>
 
-        {/* Reset Active Session */}
+        {/* Reset Active Session (تصفير الفعلي) */}
         <button
           type="button"
           onClick={onResetSession}
+          title={isAr ? 'تصفير الكميات المستلمة (الفعلي) بالكامل للبدء من جديد' : 'Reset actual counted quantities to zero'}
           className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-extrabold text-xs bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
         >
           <Trash2 className="w-4 h-4" />
-          <span>{isAr ? 'تصفير هذا الإذن' : 'Reset Return'}</span>
+          <span>{isAr ? 'تصفير الفعلي' : 'Reset Actual'}</span>
         </button>
       </div>
     </section>

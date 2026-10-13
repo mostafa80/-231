@@ -9,6 +9,8 @@ interface HeaderProps {
   onToggleLang: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  animationsEnabled: boolean;
+  onToggleAnimations: () => void;
   onLoadDemoData: () => void;
   onStartEmptySession?: () => void;
   onDownloadTemplate: () => void;
@@ -22,6 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleLang,
   soundEnabled,
   onToggleSound,
+  animationsEnabled,
+  onToggleAnimations,
   onLoadDemoData,
   onStartEmptySession,
   onDownloadTemplate,
@@ -85,6 +89,33 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Palette className="w-3.5 h-3.5 text-indigo-600" />
             <span>{isAr ? 'الثيم والخطوط 🎨' : 'Themes & Fonts'}</span>
+          </button>
+
+          {/* Animation Toggle Button */}
+          <button
+            onClick={onToggleAnimations}
+            title={
+              animationsEnabled
+                ? (isAr ? 'إيقاف التأثيرات الحركية والأنيميشن لتسريع الأداء والاستجابة الفورية' : 'Turn off animations for instant speed')
+                : (isAr ? 'تشغيل التأثيرات الحركية والأنيميشن' : 'Turn on animations')
+            }
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all active:scale-95 cursor-pointer shadow-xs ${
+              animationsEnabled
+                ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+            }`}
+          >
+            {animationsEnabled ? (
+              <>
+                <Zap className="w-3.5 h-3.5 text-amber-600" />
+                <span>{isAr ? 'أنيميشن: مفعّل ✨' : 'Anim: ON ✨'}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-500 font-black">⏸️</span>
+                <span>{isAr ? 'أنيميشن: متوقف ⏸️' : 'Anim: OFF ⏸️'}</span>
+              </>
+            )}
           </button>
 
           {/* Offline Guide Button */}

@@ -47,8 +47,8 @@ export const SessionBar: React.FC<SessionBarProps> = ({
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={
               isAr
-                ? '🔎 ابحث برقم الإذن (مثال: 4476) أو اسم الفرع (مثال: سيتي ستارز)...'
-                : '🔎 Search return # (e.g. 4476) or branch name (e.g. Citystars)...'
+                ? '🔎 ابحث برقم الفاتورة الواردة (مثال: 4476) أو اسم الفرع (مثال: المعادي)...'
+                : '🔎 Search invoice # (e.g. 4476) or branch name (e.g. Maadi)...'
             }
             className="w-full text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 rtl:pr-9 rtl:pl-3 ltr:pl-9 ltr:pr-3 focus:bg-white focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-all outline-hidden"
           />
@@ -61,7 +61,7 @@ export const SessionBar: React.FC<SessionBarProps> = ({
             className="w-full sm:w-64 text-xs font-semibold py-2 px-3 bg-white border border-slate-200 rounded-lg text-slate-800 focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-all outline-hidden cursor-pointer"
           >
             <option value="">
-              {isAr ? '📂 اختر أو انتقل لإذن محدد...' : '📂 Jump to specific return...'}
+              {isAr ? '📂 اختر أو انتقل لفاتورة محددة...' : '📂 Jump to specific invoice...'}
             </option>
             {filteredSessions.map((s) => {
               const prefix = s.returnMeta.returnNo ? `#${s.returnMeta.returnNo} - ` : '';
@@ -79,11 +79,11 @@ export const SessionBar: React.FC<SessionBarProps> = ({
 
           <button
             onClick={onAddNewSession}
-            title={isAr ? 'إنشاء إذن مرتجع يدوي جديد' : 'Add custom return tab'}
+            title={isAr ? 'إنشاء فاتورة واردة من المخزن الى الفرع' : 'Add custom inbound invoice tab'}
             className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-2 text-xs font-bold rounded-lg bg-red-600 hover:bg-red-700 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">{isAr ? 'إذن جديد' : 'New Return'}</span>
+            <span className="hidden sm:inline">{isAr ? 'فاتورة جديدة' : 'New Invoice'}</span>
           </button>
         </div>
       </div>

@@ -11,6 +11,7 @@ import {
   AlertOctagon,
   Sparkles,
   ShoppingBag,
+  RotateCcw,
 } from 'lucide-react';
 import { Session, FilterType, Language } from '../types';
 
@@ -19,7 +20,6 @@ interface InvoiceDiscrepancyInspectorProps {
   onEditItem: (code: string) => void;
   onFilterSelect: (filter: FilterType) => void;
   currentFilter: FilterType;
-  onQuickMatchAll?: () => void;
   onResetCounts?: () => void;
   lang: Language;
 }
@@ -29,7 +29,6 @@ export const InvoiceDiscrepancyInspector: React.FC<InvoiceDiscrepancyInspectorPr
   onEditItem,
   onFilterSelect,
   currentFilter,
-  onQuickMatchAll,
   onResetCounts,
   lang,
 }) => {
@@ -209,21 +208,21 @@ export const InvoiceDiscrepancyInspector: React.FC<InvoiceDiscrepancyInspectorPr
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base sm:text-lg font-black text-slate-900">
-                {isAr ? `كاشف وفاحص فوارق الفاتورة | ${branchName}` : `Invoice Discrepancies Radar | ${branchName}`}
+                {isAr ? `مطابقة وفحص الفاتورة الواردة من المخزن إلى الفرع | ${branchName}` : `Inbound Warehouse Invoice Audit | ${branchName}`}
               </h2>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 font-mono">
                 #{invoiceNo}
               </span>
               {keeper && (
                 <span className="text-xs font-semibold text-slate-500">
-                  ({isAr ? `المندوب: ${keeper}` : `Salesperson: ${keeper}`})
+                  ({isAr ? `المندوب / المستلم: ${keeper}` : `Salesperson / Keeper: ${keeper}`})
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
               {isAr
-                ? 'تحليل تلقائي فوري لكميات فاتورة البيع ومقارنتها بالمستلم الفعلي لحساب الفوارق بدقة'
-                : 'Real-time automatic audit of sales invoice items vs actual received counts'}
+                ? 'تحليل تلقائي لكميات الفاتورة الواردة من المخزن ومقارنتها بالمستلم الفعلي بالباركود لاكتشاف أي فوارق بدقة'
+                : 'Real-time audit of inbound warehouse invoice quantities vs actual barcode scan counts'}
             </p>
           </div>
         </div>
@@ -255,9 +254,9 @@ export const InvoiceDiscrepancyInspector: React.FC<InvoiceDiscrepancyInspectorPr
 
       {/* 2. Key Metrics Cards Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4">
-        {/* Card 1: Total Invoice System Qty */}
+        {/* Card 1: Total Inbound Invoice System Qty */}
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between">
-          <span className="text-[11px] font-bold text-slate-500">{isAr ? 'كمية الفاتورة' : 'Invoice Total'}</span>
+          <span className="text-[11px] font-bold text-slate-600">{isAr ? 'إجمالي الفاتورة الواردة' : 'Inbound Invoice Total'}</span>
           <div className="mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900">{analysis.totalSystemQty}</span>
             <span className="text-[11px] font-bold text-slate-500 mx-1">{isAr ? 'قطعة' : 'pcs'}</span>
@@ -429,26 +428,15 @@ export const InvoiceDiscrepancyInspector: React.FC<InvoiceDiscrepancyInspectorPr
 
         {/* Quick Auditor Actions */}
         <div className="flex items-center gap-2">
-          {onQuickMatchAll && (
-            <button
-              type="button"
-              onClick={onQuickMatchAll}
-              title={isAr ? 'اعتماد جميع كميات الفاتورة كمستلمة دفعة واحدة للتعديل السريع على الفوارق فقط' : 'Fill all items as matched with invoice quantities'}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{isAr ? 'استلام الكل كمطابق 100%' : 'Quick Match All'}</span>
-            </button>
-          )}
-
           {onResetCounts && (
             <button
               type="button"
               onClick={onResetCounts}
-              title={isAr ? 'تصفير كميات الفحص لإعادة التدقيق من الصفر' : 'Reset actual counts to re-audit'}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold transition-all active:scale-95 cursor-pointer"
+              title={isAr ? 'تصفير كميات الاستلام الفعلي بالكامل للبدء من جديد من الصفر' : 'Reset actual counts to zero to re-audit'}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
             >
-              <span>{isAr ? 'تصفير الفعلي' : 'Reset'}</span>
+              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+              <span>{isAr ? 'تصفير الفعلي' : 'Reset Counts'}</span>
             </button>
           )}
         </div>

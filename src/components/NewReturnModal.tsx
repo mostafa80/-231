@@ -35,7 +35,7 @@ export const NewReturnModal: React.FC<NewReturnModalProps> = ({ onAdd, onClose, 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-5 text-right rtl:text-right ltr:text-left">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
           <h3 className="font-extrabold text-slate-900 text-sm">
-            {isAr ? 'إنشاء إذن مرتجع / تحويل يدوي جديد' : 'Create Custom Return / Transfer Slip'}
+            {isAr ? 'إنشاء فاتورة واردة من المخزن الى الفرع / إذن استلام جديد' : 'Create Inbound Invoice / Receiving Slip'}
           </h3>
           <button
             type="button"
@@ -49,7 +49,7 @@ export const NewReturnModal: React.FC<NewReturnModalProps> = ({ onAdd, onClose, 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              {isAr ? 'اسم الفرع الراسل *:' : 'Branch Name *:'}
+              {isAr ? 'اسم الفرع المستلم *:' : 'Branch Name *:'}
             </label>
             <input
               type="text"
@@ -64,7 +64,7 @@ export const NewReturnModal: React.FC<NewReturnModalProps> = ({ onAdd, onClose, 
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                {isAr ? 'رقم الإذن:' : 'Slip No:'}
+                {isAr ? 'رقم الفاتورة الواردة:' : 'Inbound Invoice No:'}
               </label>
               <input
                 type="text"
@@ -77,7 +77,7 @@ export const NewReturnModal: React.FC<NewReturnModalProps> = ({ onAdd, onClose, 
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                {isAr ? 'تاريخ الإذن:' : 'Date:'}
+                {isAr ? 'تاريخ الفاتورة:' : 'Date:'}
               </label>
               <input
                 type="date"
@@ -90,7 +90,7 @@ export const NewReturnModal: React.FC<NewReturnModalProps> = ({ onAdd, onClose, 
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              {isAr ? 'أمين المخزن المستلم:' : 'Receiving Keeper:'}
+              {isAr ? 'المستلم / أمين المخزن:' : 'Receiving Keeper:'}
             </label>
             <input
               type="text"
@@ -109,7 +109,7 @@ export const NewReturnModal: React.FC<NewReturnModalProps> = ({ onAdd, onClose, 
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder={isAr ? 'مثال: تحويل مباشر لفرع مدينتي أو مرتجع للمكتب الرئيسي' : 'e.g. Transfer to Madinaty'}
+              placeholder={isAr ? 'مثال: فاتورة واردة من المخزن الرئيسي أو تحويل مباشر لفرع مدينتي' : 'e.g. Inbound from main warehouse'}
               className="w-full text-xs font-semibold py-2 px-3 border border-slate-200 rounded-xl focus:border-red-600 focus:ring-2 focus:ring-red-100 outline-hidden"
             />
           </div>
