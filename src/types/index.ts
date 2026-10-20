@@ -60,3 +60,36 @@ export interface Session {
 export type FilterType = 'all' | 'match' | 'extra' | 'less' | 'counted' | 'damaged';
 export type ItemCondition = 'sound' | 'damaged';
 export type Language = 'ar' | 'en';
+export type AppMode = 'inbound_invoice' | 'returns_hub';
+
+export type ReturnConditionType = 'sound' | 'damaged' | 'defect';
+
+export interface DedicatedReturnItem {
+  id: string;
+  code: string;
+  itemName: string;
+  category: string;
+  qty: number;
+  costPrice: number;
+  sellingPrice: number;
+  totalCost: number;
+  totalSelling: number;
+  condition: ReturnConditionType;
+  branch: string;
+  returnNo: string;
+  date: string;
+  notes?: string;
+  timestamp: number;
+}
+
+export interface DedicatedReturnSlip {
+  id: string;
+  slipNo: string;
+  branch: string;
+  date: string;
+  keeper: string;
+  notes: string;
+  items: DedicatedReturnItem[];
+  isLocked?: boolean;
+  createdAt: number;
+}

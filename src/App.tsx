@@ -31,18 +31,54 @@ import { OfflineGuideModal } from './components/OfflineGuideModal';
 import { useThemeManager } from './hooks/useThemeManager';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
 import { ExeConverterModal } from './components/ExeConverterModal';
+import { WhatsAppReportModal } from './components/WhatsAppReportModal';
+import { UploadGatekeeper } from './components/UploadGatekeeper';
+import { Keyboard } from 'lucide-react';
+import {
+  saveAppStateOffline,
+  loadSyncFallbackState,
+  loadAppStateOffline,
+  clearOfflineStorage,
+} from './utils/offlineStorage';
 
-const MULTI_RETURNS_STORAGE_KEY = 'jard_multi_returns_hub_v2';
-const AUTO_SAVE_INTERVAL = 3 * 60 * 1000; // 3 minutes
+const AUTO_SAVE_INTERVAL = 30 * 1000; // 30 seconds backup heartbeat (in addition to instant save on every scan)
 
 export default function App() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [masterCatalog, setMasterCatalog] = useState<Record<string, ReturnItem>>({});
+  const initialSync = useMemo(() => loadSyncFallbackState(), []);
+
+  const [sessions, setSessions] = useState<Session[]>(() => {
+    if (initialSync.sessions && initialSync.sessions.length > 0) {
+      return initialSync.sessions;
+    }
+    return createSampleDemoSessions();
+  });
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+    if (initialSync.sessions && initialSync.sessions.length > 0) {
+      return initialSync.activeSessionId || initialSync.sessions[0].id;
+    }
+    return null;
+  });
+  const [masterCatalog, setMasterCatalog] = useState<Record<string, ReturnItem>>(() => {
+    return initialSync.masterCatalog || {};
+  });
+  const [isHydrated, setIsHydrated] = useState<boolean>(false);
 
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [condition, setCondition] = useState<ItemCondition>('sound');
   const [autoAdd, setAutoAdd] = useState<boolean>(true);
+  const [quickScanQty, setQuickScanQty] = useState<number>(() => {
+    const saved = localStorage.getItem('so_much_quick_scan_qty');
+    if (saved) {
+      const num = parseInt(saved, 10);
+      if ([1, 3, 6, 12].includes(num)) return num;
+    }
+    return 1;
+  });
+
+  const handleQuickScanQtyChange = (qty: number) => {
+    setQuickScanQty(qty);
+    localStorage.setItem('so_much_quick_scan_qty', String(qty));
+  };
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [lang, setLang] = useState<Language>('ar');
@@ -59,6 +95,7 @@ export default function App() {
   const [isOfflineGuideOpen, setIsOfflineGuideOpen] = useState<boolean>(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState<boolean>(false);
   const [isExeModalOpen, setIsExeModalOpen] = useState<boolean>(false);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState<boolean>(false);
 
   // Animation Toggle State (persisted in LocalStorage)
   const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(() => {
@@ -127,74 +164,105 @@ export default function App() {
     document.documentElement.setAttribute('lang', lang);
   }, [lang]);
 
-  // Load state from LocalStorage on mount
+  // Load full state from IndexedDB + LocalStorage on mount (survives laptop power loss / offline restart)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(MULTI_RETURNS_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.sessions && Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-          setSessions(parsed.sessions);
-          setActiveSessionId(parsed.activeSessionId || parsed.sessions[0].id);
-          const timeStr = new Date().toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-          setAutoSaveTime(timeStr);
-          return;
+    let mounted = true;
+    loadAppStateOffline().then((persisted) => {
+      if (!mounted) return;
+      if (persisted && persisted.sessions && persisted.sessions.length > 0) {
+        setSessions(persisted.sessions);
+        setActiveSessionId(persisted.activeSessionId || persisted.sessions[0].id);
+        if (persisted.masterCatalog && Object.keys(persisted.masterCatalog).length > 0) {
+          setMasterCatalog(persisted.masterCatalog);
         }
+        const timeStr = new Date(persisted.timestamp || Date.now()).toLocaleTimeString(
+          lang === 'ar' ? 'ar-EG' : 'en-US',
+          { hour: '2-digit', minute: '2-digit', second: '2-digit' }
+        );
+        setAutoSaveTime(timeStr);
+
+        // Count how many items were already received across sessions
+        const totalReceivedItems = persisted.sessions.reduce(
+          (sum, s) => sum + Object.values(s.jardData || {}).filter((j) => j.countedQty > 0).length,
+          0
+        );
+        if (totalReceivedItems > 0) {
+          showMessage(
+            lang === 'ar'
+              ? `🛡️ تم استعادة بيانات الجلسة السابقة تلقائياً (${totalReceivedItems} صنف مستلم) — بياناتك محفوظة بالكامل أوفلاين!`
+              : `🛡️ Automatically restored previous session (${totalReceivedItems} received items) — offline data protected!`,
+            'info'
+          );
+        }
+      } else if (sessions.length > 0 && !activeSessionId) {
+        setActiveSessionId(sessions[0].id);
       }
-    } catch {
-      // Ignore parse errors
-    }
+      setIsHydrated(true);
+    });
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    // Default initial sample session if empty
-    const initialDemos = createSampleDemoSessions();
-    setSessions(initialDemos);
-    setActiveSessionId(initialDemos[0].id);
-  }, [lang]);
-
-  // Auto-Save mechanism
+  // Instant Auto-Save mechanism (localStorage + IndexedDB)
   const saveToLocalStorage = useCallback(
     (manual: boolean = false) => {
       if (sessions.length === 0) return;
-      try {
-        const payload = {
-          timestamp: Date.now(),
-          activeSessionId,
-          sessions,
-        };
-        localStorage.setItem(MULTI_RETURNS_STORAGE_KEY, JSON.stringify(payload));
-        const timeStr = new Date().toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        setAutoSaveTime(timeStr);
-        if (manual) {
-          showMessage(lang === 'ar' ? '✅ تم حفظ بيانات الأذونات بنجاح' : '✅ Saved successfully', 'success');
-        }
-      } catch {
-        // LocalStorage may be full
+      void saveAppStateOffline({
+        sessions,
+        activeSessionId,
+        masterCatalog,
+      });
+      const timeStr = new Date().toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      setAutoSaveTime(timeStr);
+      if (manual) {
+        showMessage(
+          lang === 'ar'
+            ? '✅ تم حفظ جميع بيانات الفاتورة والماستر والاستلامات فوراً (أوفلاين)'
+            : '✅ Saved all invoice, master & count data offline',
+          'success'
+        );
       }
     },
-    [sessions, activeSessionId, lang, showMessage]
+    [sessions, activeSessionId, masterCatalog, lang, showMessage]
   );
 
-  // Interval auto-save
+  // Instant save on EVERY change to sessions, activeSessionId, or masterCatalog (zero data loss on power cut!)
+  useEffect(() => {
+    if (!isHydrated) return;
+    saveToLocalStorage(false);
+  }, [sessions, activeSessionId, masterCatalog, isHydrated, saveToLocalStorage]);
+
+  // Heartbeat + pagehide / visibilitychange / beforeunload protection
   useEffect(() => {
     const interval = setInterval(() => {
       saveToLocalStorage(false);
     }, AUTO_SAVE_INTERVAL);
 
-    const handleBeforeUnload = () => {
+    const handleFlushSave = () => {
       saveToLocalStorage(false);
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        saveToLocalStorage(false);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleFlushSave);
+    window.addEventListener('pagehide', handleFlushSave);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('beforeunload', handleFlushSave);
+      window.removeEventListener('pagehide', handleFlushSave);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [saveToLocalStorage]);
 
@@ -240,7 +308,55 @@ export default function App() {
           return;
         }
 
-        const newSessions = extracted.map((item) => createSessionFromExtracted(item));
+        // Check if existing sessions already have scanned jardData that matches this uploaded invoice
+        const existingJardMap: Record<string, JardItem> = {};
+        sessions.forEach((oldSess) => {
+          Object.entries(oldSess.jardData || {}).forEach(([k, v]) => {
+            if (v && v.countedQty > 0) {
+              existingJardMap[k.toUpperCase()] = v;
+            }
+          });
+        });
+
+        const rawNewSessions = extracted.map((item) => createSessionFromExtracted(item));
+        let matchingPreviousCount = 0;
+        rawNewSessions.forEach((ns) => {
+          Object.keys(ns.inventoryMap).forEach((k) => {
+            if (existingJardMap[k.toUpperCase()]) {
+              matchingPreviousCount++;
+            }
+          });
+        });
+
+        let shouldMergeExisting = false;
+        if (matchingPreviousCount > 0) {
+          shouldMergeExisting = window.confirm(
+            lang === 'ar'
+              ? `🛡️ تنبيه حماية البيانات:\nوجدنا عدد (${matchingPreviousCount}) صنف تم جردها واستلامها مسبقاً في هذه الفاتورة!\n\nاضغط (موافق / OK) للاحتفاظ بالكميات المستلمة سابقاً واستكمال الاستلام دون إعادة من الصفر، أو (إلغاء / Cancel) لتصفيرها والبدء من جديد.`
+              : `🛡️ Data Protection:\nFound ${matchingPreviousCount} items already counted for this invoice!\n\nClick OK to keep your previous counts and continue, or Cancel to start from zero.`
+          );
+        }
+
+        const newSessions = shouldMergeExisting
+          ? rawNewSessions.map((ns) => {
+              const mergedJard = { ...ns.jardData };
+              Object.entries(existingJardMap).forEach(([k, prevJard]) => {
+                const invItem = ns.inventoryMap[k];
+                if (invItem) {
+                  mergedJard[k] = {
+                    ...prevJard,
+                    itemName: invItem.itemName || prevJard.itemName,
+                    systemQty: invItem.systemQty,
+                    price: invItem.price || prevJard.price,
+                  };
+                } else {
+                  mergedJard[k] = prevJard;
+                }
+              });
+              return { ...ns, jardData: mergedJard };
+            })
+          : rawNewSessions;
+
         setSessions(newSessions);
         setActiveSessionId(newSessions[0].id);
 
@@ -693,6 +809,139 @@ export default function App() {
     }, 150);
   };
 
+  // Batch intake and register items from WhatsApp message
+  const handleBatchApplyItems = useCallback(
+    (itemsToAdd: { code: string; qty: number; condition: 'sound' | 'damaged' }[]) => {
+      if (!activeSession || itemsToAdd.length === 0) return;
+
+      setSessions((prev) =>
+        prev.map((sess) => {
+          if (sess.id !== activeSession.id) return sess;
+
+          // Snapshot current jardData for undo
+          const newUndoStack = [...sess.undoStack];
+          if (newUndoStack.length >= 15) newUndoStack.shift();
+          newUndoStack.push(JSON.stringify(sess.jardData));
+
+          const updatedJard = { ...sess.jardData };
+          const updatedInv = { ...sess.inventoryMap };
+
+          itemsToAdd.forEach(({ code, qty, condition }) => {
+            const key = code.toUpperCase();
+            const existing = updatedJard[key];
+            const masterItem = masterCatalog[key];
+
+            // If item not yet in inventory map, register it as surplus/received item
+            if (!updatedInv[key]) {
+              updatedInv[key] = {
+                code: key,
+                itemName: masterItem ? masterItem.itemName : `صنف واتساب (${key})`,
+                systemQty: 0,
+                price: masterItem?.price || 0,
+                cost: masterItem?.cost || 0,
+                category: masterItem?.category || 'واتساب',
+              };
+            }
+
+            const soundDelta = condition === 'sound' ? qty : 0;
+            const damagedDelta = condition === 'damaged' ? qty : 0;
+
+            if (existing) {
+              const newSound = existing.soundQty + soundDelta;
+              const newDamaged = existing.damagedQty + damagedDelta;
+              updatedJard[key] = {
+                ...existing,
+                soundQty: newSound,
+                damagedQty: newDamaged,
+                countedQty: newSound + newDamaged,
+                time: Date.now(),
+              };
+            } else {
+              const invInfo = updatedInv[key];
+              updatedJard[key] = {
+                code: key,
+                itemName: invInfo?.itemName || `صنف (${key})`,
+                systemQty: invInfo?.systemQty || 0,
+                soundQty: soundDelta,
+                damagedQty: damagedDelta,
+                countedQty: soundDelta + damagedDelta,
+                price: invInfo?.price || 0,
+                cost: invInfo?.cost || 0,
+                category: invInfo?.category || 'واتساب',
+                time: Date.now(),
+              };
+            }
+          });
+
+          return {
+            ...sess,
+            inventoryMap: updatedInv,
+            jardData: updatedJard,
+            undoStack: newUndoStack,
+          };
+        })
+      );
+
+      if (soundEnabled) playSuccessBeep();
+      triggerVisualFeedback(true);
+      const totalPieces = itemsToAdd.reduce((sum, it) => sum + it.qty, 0);
+      showMessage(
+        lang === 'ar'
+          ? `✅ تم تسجيل ${itemsToAdd.length} صنف بإجمالي ${totalPieces} قطعة بنجاح من رسالة الواتساب!`
+          : `✅ Recorded ${itemsToAdd.length} items (${totalPieces} pcs) from WhatsApp message!`,
+        'success'
+      );
+    },
+    [activeSession, masterCatalog, soundEnabled, triggerVisualFeedback, showMessage, lang]
+  );
+
+  // Global Keyboard Event Listener (Ctrl+S for Save, Ctrl+P for Print, Ctrl+Z for Undo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      if (!isCtrlOrMeta) return;
+
+      const key = e.key.toLowerCase();
+
+      // Ctrl+S / Cmd+S: Save current work to LocalStorage
+      if (key === 's') {
+        e.preventDefault();
+        saveToLocalStorage(true);
+        return;
+      }
+
+      // Ctrl+P / Cmd+P: Print official return/invoice receipt
+      if (key === 'p') {
+        e.preventDefault();
+        handlePrintReceipt();
+        return;
+      }
+
+      // Ctrl+Z / Cmd+Z: Undo last scan / modification
+      if (key === 'z' && !e.shiftKey) {
+        const activeElem = document.activeElement as HTMLElement | null;
+        // Don't intercept if user is typing text inside an open modal or input field with text
+        const isTypingInField =
+          activeElem &&
+          (activeElem.tagName === 'TEXTAREA' ||
+            (activeElem.tagName === 'INPUT' &&
+              activeElem.getAttribute('type') !== 'checkbox' &&
+              (activeElem as HTMLInputElement).value.length > 0 &&
+              activeElem.id !== 'barcode-input'));
+
+        if (!isTypingInField) {
+          e.preventDefault();
+          handleUndo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [saveToLocalStorage, handlePrintReceipt, handleUndo]);
+
   // Load sample demo data
   const handleLoadDemoData = () => {
     if (
@@ -746,6 +995,7 @@ export default function App() {
         },
       };
 
+      void clearOfflineStorage();
       setSessions([emptySession]);
       setActiveSessionId(emptySession.id);
       setMasterCatalog({});
@@ -759,6 +1009,11 @@ export default function App() {
       );
     }
   };
+
+  const hasInvoice = Boolean(activeSession && Object.keys(activeSession.inventoryMap).length > 0);
+  const hasMaster = Boolean(Object.keys(masterCatalog).length > 0);
+  const isGateOpen = hasInvoice && hasMaster;
+  const isAr = lang === 'ar';
 
   return (
     <div className="min-h-screen text-slate-900 pb-20 sm:pb-8">
@@ -778,6 +1033,7 @@ export default function App() {
           onOpenOfflineGuide={() => setIsOfflineGuideOpen(true)}
           onOpenThemeSettings={() => setIsThemeModalOpen(true)}
           onOpenExeConverter={() => setIsExeModalOpen(true)}
+          onOpenWhatsApp={() => setIsWhatsAppModalOpen(true)}
         />
 
         {/* Sessions & Tabs Bar */}
@@ -802,125 +1058,194 @@ export default function App() {
           lang={lang}
         />
 
-        {/* 2. Scanner & Input Section */}
-        <ScannerSection
-          session={activeSession}
-          masterCatalog={masterCatalog}
-          condition={condition}
-          onConditionChange={setCondition}
-          autoAdd={autoAdd}
-          onAutoAddChange={setAutoAdd}
-          onAddItem={handleAddItem}
-          onUndo={handleUndo}
-          canUndo={(activeSession?.undoStack.length || 0) > 0}
-          message={message}
-          lang={lang}
-          hasInvoice={Boolean(activeSession && Object.keys(activeSession.inventoryMap).length > 0)}
-          hasMaster={Boolean(Object.keys(masterCatalog).length > 0)}
-        />
+        {/* 2. Mandatory Upload Gatekeeper OR Unlocked Workbench Screens */}
+        {!isGateOpen ? (
+          <UploadGatekeeper
+            session={activeSession}
+            masterCatalogCount={Object.keys(masterCatalog).length}
+            onTriggerInvoiceUpload={() => {
+              const input = document.getElementById('invoice-file-input') as HTMLInputElement;
+              input?.click();
+            }}
+            onTriggerMasterUpload={() => {
+              const input = document.getElementById('master-file-input') as HTMLInputElement;
+              input?.click();
+            }}
+            onLoadDemoData={handleLoadDemoData}
+            lang={lang}
+          />
+        ) : (
+          <>
+            {/* Gatekeeper Unlocked Status Banner */}
+            <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white rounded-2xl p-3 sm:p-4 mb-4 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 animate-fadeIn">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center font-black flex-shrink-0">
+                  🔓
+                </div>
+                <div>
+                  <div className="text-xs sm:text-sm font-black flex items-center gap-1.5">
+                    <span>
+                      {isAr
+                        ? 'بوابة التشغيل مفتوحة بالكامل (Upload Gatekeeper Unlocked) ✅'
+                        : 'Upload Gatekeeper Unlocked ✅'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-100 font-semibold mt-0.5">
+                    {isAr
+                      ? `تم التحقق من اكتمال الشيتين معاً بنجاح (الفاتورة: ${Object.keys(activeSession.inventoryMap).length} صنف | الماستر: ${Object.keys(masterCatalog).length} صنف) - شاشات المسح والاستلام والجداول مفعلة بالكامل للعمل.`
+                      : `Both sheets verified (Invoice: ${Object.keys(activeSession.inventoryMap).length} items | Master: ${Object.keys(masterCatalog).length} items) - All tools active.`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto flex-shrink-0">
+                <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-300 text-slate-950 shadow-2xs flex items-center gap-1">
+                  <span>🛡️</span>
+                  <span>
+                    {isAr
+                      ? `حفظ فوري أوفلاين ضد فصل الجهاز ${autoSaveTime ? `(${autoSaveTime})` : ''}`
+                      : `Instant Offline Save ${autoSaveTime ? `(${autoSaveTime})` : ''}`}
+                  </span>
+                </span>
+                <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-white text-emerald-800 shadow-2xs">
+                  {isAr ? 'جاهز للمسح والاستلام' : 'Ready to Scan & Audit'}
+                </span>
+              </div>
+            </div>
 
-        {/* Stats 7 Cards */}
-        <StatsCards session={activeSession} lang={lang} />
+            {/* 2. Scanner & Input Section */}
+            <ScannerSection
+              session={activeSession}
+              masterCatalog={masterCatalog}
+              condition={condition}
+              onConditionChange={setCondition}
+              autoAdd={autoAdd}
+              onAutoAddChange={setAutoAdd}
+              quickScanQty={quickScanQty}
+              onQuickScanQtyChange={handleQuickScanQtyChange}
+              onAddItem={handleAddItem}
+              onUndo={handleUndo}
+              canUndo={(activeSession?.undoStack.length || 0) > 0}
+              message={message}
+              lang={lang}
+              hasInvoice={hasInvoice}
+              hasMaster={hasMaster}
+            />
 
-        {/* 3. Dedicated Invoice Discrepancy Inspector & Radar */}
-        <InvoiceDiscrepancyInspector
-          session={activeSession}
-          onEditItem={(code) => {
-            setHighlightedCode(code);
-            const key = code.toUpperCase();
-            if (activeSession) {
-              const j = activeSession.jardData[key] || {
-                itemName: activeSession.inventoryMap[key]?.itemName || code,
-                code,
-                systemQty: activeSession.inventoryMap[key]?.systemQty || 0,
-                soundQty: 0,
-                damagedQty: 0,
-                countedQty: 0,
-                price: activeSession.inventoryMap[key]?.price || 0,
-                cost: activeSession.inventoryMap[key]?.cost || 0,
-                category: activeSession.inventoryMap[key]?.category || 'عام',
-                time: Date.now(),
-              };
-              setEditingItem(j);
-            }
-          }}
-          onFilterSelect={setActiveFilter}
-          currentFilter={activeFilter}
-          onResetCounts={handleResetSession}
-          lang={lang}
-        />
+            {/* Stats 7 Cards */}
+            <StatsCards session={activeSession} lang={lang} />
 
-        {/* 4. Review & Audit Table (Full Width) */}
-        <ReviewTable
-          session={activeSession}
-          onEditItem={(code) => {
-            setHighlightedCode(code);
-            const key = code.toUpperCase();
-            if (activeSession) {
-              const j = activeSession.jardData[key] || {
-                itemName: activeSession.inventoryMap[key]?.itemName || code,
-                code,
-                systemQty: activeSession.inventoryMap[key]?.systemQty || 0,
-                soundQty: 0,
-                damagedQty: 0,
-                countedQty: 0,
-                price: activeSession.inventoryMap[key]?.price || 0,
-                cost: activeSession.inventoryMap[key]?.cost || 0,
-                category: activeSession.inventoryMap[key]?.category || 'عام',
-                time: Date.now(),
-              };
-              setEditingItem(j);
-            }
-          }}
-          onExportExcel={handleExportExcel}
-          onPrintReceipt={handlePrintReceipt}
-          onCompleteAndExport={handleCompleteAndExport}
-          onManualSave={() => saveToLocalStorage(true)}
-          onResetSession={handleResetSession}
-          highlightedCode={highlightedCode}
-          lastScannedCode={lastScannedCode}
-          lang={lang}
-          filter={activeFilter}
-          onFilterChange={setActiveFilter}
-        />
+            {/* 3. Dedicated Invoice Discrepancy Inspector & Radar */}
+            <InvoiceDiscrepancyInspector
+              session={activeSession}
+              onEditItem={(code) => {
+                setHighlightedCode(code);
+                const key = code.toUpperCase();
+                if (activeSession) {
+                  const j = activeSession.jardData[key] || {
+                    itemName: activeSession.inventoryMap[key]?.itemName || code,
+                    code,
+                    systemQty: activeSession.inventoryMap[key]?.systemQty || 0,
+                    soundQty: 0,
+                    damagedQty: 0,
+                    countedQty: 0,
+                    price: activeSession.inventoryMap[key]?.price || 0,
+                    cost: activeSession.inventoryMap[key]?.cost || 0,
+                    category: activeSession.inventoryMap[key]?.category || 'عام',
+                    time: Date.now(),
+                  };
+                  setEditingItem(j);
+                }
+              }}
+              onFilterSelect={setActiveFilter}
+              currentFilter={activeFilter}
+              onResetCounts={handleResetSession}
+              lang={lang}
+            />
+
+            {/* 4. Review & Audit Table (Full Width) */}
+            <ReviewTable
+              session={activeSession}
+              onEditItem={(code) => {
+                setHighlightedCode(code);
+                const key = code.toUpperCase();
+                if (activeSession) {
+                  const j = activeSession.jardData[key] || {
+                    itemName: activeSession.inventoryMap[key]?.itemName || code,
+                    code,
+                    systemQty: activeSession.inventoryMap[key]?.systemQty || 0,
+                    soundQty: 0,
+                    damagedQty: 0,
+                    countedQty: 0,
+                    price: activeSession.inventoryMap[key]?.price || 0,
+                    cost: activeSession.inventoryMap[key]?.cost || 0,
+                    category: activeSession.inventoryMap[key]?.category || 'عام',
+                    time: Date.now(),
+                  };
+                  setEditingItem(j);
+                }
+              }}
+              onExportExcel={handleExportExcel}
+              onPrintReceipt={handlePrintReceipt}
+              onCompleteAndExport={handleCompleteAndExport}
+              onManualSave={() => saveToLocalStorage(true)}
+              onOpenWhatsApp={() => setIsWhatsAppModalOpen(true)}
+              onResetSession={handleResetSession}
+              highlightedCode={highlightedCode}
+              lastScannedCode={lastScannedCode}
+              lang={lang}
+              filter={activeFilter}
+              onFilterChange={setActiveFilter}
+            />
+          </>
+        )}
       </div>
 
       {/* Official A4 Print Receipt View (hidden on screen, visible on window.print()) */}
       <PrintReceipt session={activeSession} />
 
-      {/* Mobile Floating Bottom Bar */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex items-center justify-around gap-2 z-40 no-print shadow-lg">
-        <button
-          type="button"
-          onClick={() => {
-            const input = document.querySelector('input[type="text"][placeholder*="الباركود"], input[type="text"][placeholder*="barcode"]') as HTMLInputElement;
-            input?.focus();
-          }}
-          className="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-red-600 text-white text-center shadow-xs cursor-pointer"
-        >
-          🔍 {lang === 'ar' ? 'مسح' : 'Scan'}
-        </button>
+      {/* Mobile Floating Bottom Bar - only active when Upload Gatekeeper is open */}
+      {isGateOpen && (
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex items-center justify-around gap-2 z-40 no-print shadow-lg animate-slide-down">
+          <button
+            type="button"
+            onClick={() => {
+              const input = document.querySelector('input[type="text"][placeholder*="الباركود"], input[type="text"][placeholder*="barcode"]') as HTMLInputElement;
+              input?.focus();
+            }}
+            className="flex-1 py-2 px-2 rounded-xl font-bold text-xs bg-red-600 text-white text-center shadow-xs cursor-pointer"
+          >
+            🔍 {lang === 'ar' ? 'مسح' : 'Scan'}
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setCondition((c) => (c === 'sound' ? 'damaged' : 'sound'))}
-          className={`py-2 px-3 rounded-xl font-bold text-xs text-center border cursor-pointer ${
-            condition === 'sound'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-              : 'bg-rose-50 text-rose-800 border-rose-300'
-          }`}
-        >
-          {condition === 'sound' ? (lang === 'ar' ? 'سليم ✅' : 'Sound ✅') : (lang === 'ar' ? 'متلف ⚠️' : 'Damaged ⚠️')}
-        </button>
+          <button
+            type="button"
+            onClick={() => setCondition((c) => (c === 'sound' ? 'damaged' : 'sound'))}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs text-center border cursor-pointer ${
+              condition === 'sound'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                : 'bg-rose-50 text-rose-800 border-rose-300'
+            }`}
+          >
+            {condition === 'sound' ? (lang === 'ar' ? 'سليم ✅' : 'Sound ✅') : (lang === 'ar' ? 'متلف ⚠️' : 'Damaged ⚠️')}
+          </button>
 
-        <button
-          type="button"
-          onClick={handlePrintReceipt}
-          className="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-slate-900 text-white text-center shadow-xs cursor-pointer"
-        >
-          🖨️ {lang === 'ar' ? 'طباعة' : 'Print'}
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => setIsWhatsAppModalOpen(true)}
+            className="flex-1 py-2 px-2 rounded-xl font-bold text-xs bg-emerald-600 text-white text-center shadow-xs cursor-pointer"
+          >
+            💬 {lang === 'ar' ? 'واتساب' : 'WhatsApp'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrintReceipt}
+            className="flex-1 py-2 px-2 rounded-xl font-bold text-xs bg-slate-900 text-white text-center shadow-xs cursor-pointer"
+          >
+            🖨️ {lang === 'ar' ? 'طباعة' : 'Print'}
+          </button>
+        </div>
+      )}
 
       {/* Modals */}
       {editingItem && (
@@ -939,6 +1264,16 @@ export default function App() {
           lang={lang}
         />
       )}
+
+      {/* WhatsApp Report & Record Hub Modal */}
+      <WhatsAppReportModal
+        isOpen={isWhatsAppModalOpen}
+        onClose={() => setIsWhatsAppModalOpen(false)}
+        session={activeSession}
+        masterCatalog={masterCatalog}
+        onBatchApplyItems={handleBatchApplyItems}
+        lang={lang}
+      />
 
       {/* Offline Mode Indicator Banner */}
       <OfflineIndicator

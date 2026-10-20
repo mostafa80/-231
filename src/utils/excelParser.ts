@@ -1,5 +1,13 @@
 import * as XLSX from 'xlsx';
-import { ReturnItem, ReturnMeta, Session, JardItem } from '../types';
+import {
+  ReturnItem,
+  ReturnMeta,
+  Session,
+  JardItem,
+  DedicatedReturnItem,
+  DedicatedReturnSlip,
+  ReturnConditionType,
+} from '../types';
 import { analyzeTransferRoute } from './routeAnalyzer';
 
 export interface ExtractedInvoice {
@@ -424,12 +432,20 @@ export function parseSalesInvoiceSheet(rows: unknown[][], sheetName?: string): E
     if (isFooterRow(row)) continue;
 
     const rowText = row.map((c) => String(c ?? '').trim()).join(' ');
-    // Skip invoice metadata header row (Row 0)
+    // Skip invoice metadata header row (Row 0 / Title)
     if (
       rowText.includes('فاتوره مبيعات') ||
       rowText.includes('فاتورة مبيعات') ||
       rowText.includes('اسم العميل') ||
       rowText.includes('رقم الفاتوره')
+    ) {
+      continue;
+    }
+
+    // Skip explicit column title rows (Row 1: رقم الصنف, الاجمالي, السعر, الكميه, اسم الصنف, الباركود)
+    if (
+      (rowText.includes('الباركود') || rowText.includes('باركود')) &&
+      (rowText.includes('الصنف') || rowText.includes('الكميه') || rowText.includes('السعر') || rowText.includes('الاجمالي'))
     ) {
       continue;
     }
@@ -565,32 +581,38 @@ export function parseSalesInvoiceSheet(rows: unknown[][], sheetName?: string): E
   let priceCol = hdrPriceCol !== -1 ? hdrPriceCol : -1;
   let totalCol = hdrTotalCol !== -1 ? hdrTotalCol : -1;
 
-  // Check if candidate rows match the user's exact color-coded format:
-  // Col 0 = رقم الصنف في الفاتورة (Serial) [الأصفر]
-  // Col 1 = حاصل ضرب سعر الصنف * عدد القطع (Total) [البرتقالي]
-  // Col 2 = سعر الصنف (Price) [اللبني]
-  // Col 3 = عدد الصنف في الفاتورة (Qty) [البنفسجي]
-  // Col 4 = اسم الصنف (Item Name) [الأحمر]
-  // Col 5 = كود الصنف / الباركود (Barcode) [الأخضر]
+  // Check if candidate rows match the user's standard layout (B=Total, C=Price, D=Qty, E=Name, F=Barcode):
+  // Col 0 (A) = رقم الصنف / مسلسل (تغاضي عنه)
+  // Col 1 (B) = إجمالي السعر (Total Price)
+  // Col 2 (C) = سعر القطعة (Item Price)
+  // Col 3 (D) = الكمية (Quantity)
+  // Col 4 (E) = اسم الصنف (Item Name)
+  // Col 5 (F) = الباركود (Barcode)
   let isExactUserLayout = false;
   for (let i = 0; i < Math.min(candidateDataRows.length, 5); i++) {
     const r = candidateDataRows[i].row;
-    const hasSerial = parseCleanNum(r[0]) >= 1;
     const hasTotal = parseCleanNum(r[1]) > 0;
     const hasPrice = parseCleanNum(r[2]) > 0;
     const hasQty = parseCleanNum(r[3]) > 0;
     const hasNameOrCode =
       looksLikeProductName(r[4]) ||
+      String(r[4] ?? '').trim().length >= 2 ||
       looksLikeBarcode(r[5]) ||
       String(r[5] ?? '').trim().length >= 3;
-    if (hasSerial && hasTotal && hasPrice && hasQty && hasNameOrCode) {
+    if ((hasTotal || hasPrice || hasQty) && hasNameOrCode) {
       isExactUserLayout = true;
       break;
     }
   }
 
-  if (isExactUserLayout || (bestBarcodeCol === 5 && bestNameCol === 4)) {
-    // Exact Egyptian ERP pattern confirmed!
+  if (
+    isExactUserLayout ||
+    (bestBarcodeCol === 5 && bestNameCol === 4) ||
+    hdrBarcodeCol === 5 ||
+    (colStats[5] && colStats[5].barcodeHits > 0) ||
+    (colStats[4] && colStats[4].nameHits > 0)
+  ) {
+    // Exact specification confirmed: B=Total, C=Price, D=Qty, E=Name, F=Barcode (ignore any other column)
     barcodeCol = 5;
     nameCol = 4;
     qtyCol = 3;
@@ -643,10 +665,27 @@ export function parseSalesInvoiceSheet(rows: unknown[][], sheetName?: string): E
     const { row } = candidateDataRows[rIdx];
     if (isFooterRow(row)) continue;
 
-    // A. Barcode extraction with intelligent row-fallback
+    // Check if row is a column header row that escaped initial filtering
+    const testName = normalizeAr(String(row[nameCol] ?? ''));
+    const testCode = normalizeAr(String(row[barcodeCol] ?? ''));
+    const testTotal = normalizeAr(String(row[totalCol] ?? ''));
+    if (
+      testName.includes('اسم الصنف') ||
+      testName.includes('الصنف') ||
+      testCode.includes('الباركود') ||
+      testCode.includes('باركود') ||
+      testTotal.includes('الاجمالي') ||
+      testTotal.includes('الإجمالي') ||
+      testName.includes('فاتوره مبيعات') ||
+      testName.includes('اسم العميل')
+    ) {
+      continue;
+    }
+
+    // A. Barcode extraction:
+    // If standard layout (barcodeCol === 5), strictly take Column F and ignore other columns!
     let codeRaw = sanitizeBarcode(row[barcodeCol]);
-    if (!looksLikeBarcode(codeRaw)) {
-      // Search row for any cell that looks like a barcode
+    if (!codeRaw && barcodeCol !== 5) {
       for (let c = 0; c < row.length; c++) {
         if (c !== nameCol && looksLikeBarcode(row[c])) {
           codeRaw = sanitizeBarcode(row[c]);
@@ -655,10 +694,10 @@ export function parseSalesInvoiceSheet(rows: unknown[][], sheetName?: string): E
       }
     }
 
-    // B. Item name extraction with intelligent row-fallback
+    // B. Item name extraction:
+    // If standard layout (nameCol === 4), strictly take Column E and ignore other columns!
     let nameRaw = String(row[nameCol] ?? '').trim();
-    if (!looksLikeProductName(nameRaw)) {
-      // Search row for any cell that has product name text
+    if (!nameRaw && nameCol !== 4) {
       for (let c = 0; c < row.length; c++) {
         if (c !== barcodeCol && looksLikeProductName(row[c])) {
           nameRaw = String(row[c]).trim();
@@ -980,3 +1019,272 @@ export function createSampleDemoSessions(): Session[] {
 
   return [session];
 }
+
+/**
+ * Parses Item Condition text into standardized ReturnConditionType
+ */
+export function parseConditionText(val: unknown): ReturnConditionType {
+  const str = normalizeAr(String(val ?? ''));
+  if (/تالف|كسر|تكهين|damaged|broken/i.test(str)) return 'damaged';
+  if (/عيب|صناعه|ضمان|defect|faulty/i.test(str)) return 'defect';
+  return 'sound';
+}
+
+/**
+ * Universal Consolidated Multi-Branch Returns Parser:
+ * Capable of automatically recognizing and separating returns from multiple branches:
+ * 1. Single consolidated sheet where a column specifies the branch ("الفرع") and return slip ("رقم الإذن / المردود")
+ * 2. Multi-tab workbooks where each sheet represents a branch (e.g. Tab 1: "المعادي", Tab 2: "مدينة نصر")
+ * 3. Sectioned blocks where branch headers separate item groups
+ * 4. Automatic cross-referencing and filling from Master Catalog for missing cost, selling price, or item names
+ */
+export function parseConsolidatedMultiBranchReturns(
+  workbook: XLSX.WorkBook,
+  masterCatalog: Record<string, ReturnItem> = {}
+): DedicatedReturnSlip[] {
+  if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) return [];
+
+  const slipsMap: Record<string, DedicatedReturnSlip> = {};
+
+  workbook.SheetNames.forEach((sheetName, sheetIdx) => {
+    const ws = workbook.Sheets[sheetName];
+    if (!ws) return;
+    const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
+    if (!rawRows || rawRows.length < 2) return;
+
+    // Detect if this sheet name is a branch name (e.g. not Sheet1, Sheet2, etc.)
+    const isNamedTab = !/^(sheet\d+|ورقة\d+|ورقه\d+)$/i.test(sheetName.trim());
+    const defaultBranchFromSheet = isNamedTab ? sheetName.trim() : 'فرع عام';
+
+    // 1. Search for header row in top 15 rows
+    let headerRowIdx = -1;
+    let branchCol = -1;
+    let slipNoCol = -1;
+    let dateCol = -1;
+    let barcodeCol = -1;
+    let nameCol = -1;
+    let qtyCol = -1;
+    let costCol = -1;
+    let priceCol = -1;
+    let condCol = -1;
+    let notesCol = -1;
+    let keeperCol = -1;
+
+    for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
+      const row = rawRows[r] || [];
+      const rowNorm = row.map((cell) => normalizeAr(String(cell ?? '')));
+
+      // Check for presence of essential columns: barcode or name or branch
+      const bIdx = rowNorm.findIndex((h) => /باركود|كود|barcode|code|sku/i.test(h));
+      const nIdx = rowNorm.findIndex((h) => /اسم الصنف|الصنف|البيان|الوصف|name|item|product|description/i.test(h));
+      const brIdx = rowNorm.findIndex((h) => /الفرع|اسم الفرع|الفرع الراسل|من فرع|العميل|branch|store/i.test(h));
+
+      if (bIdx !== -1 || (nIdx !== -1 && (brIdx !== -1 || rowNorm.some((h) => /كمي|qty/i.test(h))))) {
+        headerRowIdx = r;
+        barcodeCol = bIdx;
+        nameCol = nIdx;
+        branchCol = brIdx;
+
+        slipNoCol = rowNorm.findIndex((h) => /رقم المردود|رقم الاذن|رقم الإذن|رقم الفاتوره|رقم الفاتورة|رقم السند|اذن|مردود|سند|return no|slip no|doc no|invoice/i.test(h));
+        dateCol = rowNorm.findIndex((h) => /تاريخ|date/i.test(h));
+        qtyCol = rowNorm.findIndex((h) => /كميه|كمية|العدد|عدد|qty|quantity|count/i.test(h));
+        costCol = rowNorm.findIndex((h) => /سعر التكلفه|سعر التكلفة|التكلفه|التكلفة|تكلفة القطعة|cost|purchase/i.test(h));
+        priceCol = rowNorm.findIndex((h) => /سعر البيع|البيع|سعر القطعة|سعر الوحده|السعر|price|sale/i.test(h));
+        condCol = rowNorm.findIndex((h) => /حاله الصنف|حالة الصنف|حاله|حالة|حالة المرتجع|condition|status/i.test(h));
+        notesCol = rowNorm.findIndex((h) => /ملاحظات|ملاحظه|ملاحظة|سبب|notes|remarks|reason/i.test(h));
+        keeperCol = rowNorm.findIndex((h) => /مستلم|امين|أمين|مندوب|keeper|receiver/i.test(h));
+        break;
+      }
+    }
+
+    // Fallbacks if columns were not found by explicit headers
+    let startIdx = 1;
+    if (headerRowIdx !== -1) {
+      startIdx = headerRowIdx + 1;
+    } else {
+      // Automatic column assignment by inspection
+      startIdx = 1;
+      barcodeCol = 0;
+      nameCol = 1;
+      qtyCol = 2;
+      costCol = 3;
+      priceCol = 4;
+    }
+
+    let lastKnownBranch = defaultBranchFromSheet;
+    let lastKnownReturnNo = `RTN-${sheetIdx + 1}${Math.floor(100 + Math.random() * 900)}`;
+    let lastKnownDate = new Date().toISOString().slice(0, 10);
+    let lastKnownKeeper = 'أمين المخزن';
+
+    for (let r = startIdx; r < rawRows.length; r++) {
+      const row = rawRows[r] || [];
+      if (!row || row.length === 0) continue;
+      if (isFooterRow(row)) continue;
+
+      // Check if this row is a section break/header row with branch name (e.g. "فرع المعادي | رقم الإذن 101")
+      const rowStr = row.map((c) => String(c ?? '')).join(' ');
+      if (/فرع|الفرع/i.test(rowStr) && !row.some((c) => looksLikeBarcode(c))) {
+        const brMatch = rowStr.match(/(?:فرع|اسم الفرع|الفرع)[\s:：]+([^\r\n,;|]+)/i);
+        if (brMatch && brMatch[1]) {
+          lastKnownBranch = brMatch[1].trim();
+        }
+        const noMatch = rowStr.match(/(?:إذن|اذن|مردود|رقم)[\s:：#]+(\d+)/i);
+        if (noMatch && noMatch[1]) {
+          lastKnownReturnNo = noMatch[1].trim();
+        }
+        continue;
+      }
+
+      // Branch determination
+      let currentBranch = lastKnownBranch;
+      if (branchCol !== -1 && row[branchCol]) {
+        const cellBranch = String(row[branchCol]).trim();
+        if (cellBranch && cellBranch !== '-' && cellBranch !== '0') {
+          currentBranch = cellBranch;
+          lastKnownBranch = cellBranch;
+        }
+      }
+
+      // Return No determination
+      let currentReturnNo = lastKnownReturnNo;
+      if (slipNoCol !== -1 && row[slipNoCol]) {
+        const cellNo = sanitizeBarcode(row[slipNoCol]);
+        if (cellNo && cellNo !== '-' && cellNo !== '0') {
+          currentReturnNo = cellNo;
+          lastKnownReturnNo = cellNo;
+        }
+      }
+
+      // Date determination
+      let currentDate = lastKnownDate;
+      if (dateCol !== -1 && row[dateCol]) {
+        const dVal = row[dateCol];
+        if (typeof dVal === 'number' && dVal > 25000 && dVal < 60000) {
+          const dObj = new Date((dVal - 25569) * 86400 * 1000);
+          currentDate = dObj.toISOString().slice(0, 10);
+        } else if (String(dVal).trim()) {
+          currentDate = String(dVal).trim().slice(0, 10);
+        }
+      }
+
+      // Keeper determination
+      let currentKeeper = lastKnownKeeper;
+      if (keeperCol !== -1 && row[keeperCol]) {
+        const kStr = String(row[keeperCol]).trim();
+        if (kStr && kStr !== '-') currentKeeper = kStr;
+      }
+
+      // Barcode extraction
+      let code = barcodeCol !== -1 ? sanitizeBarcode(row[barcodeCol]) : '';
+      if (!looksLikeBarcode(code)) {
+        // Search row for cell that looks like barcode
+        for (let c = 0; c < row.length; c++) {
+          if (c !== nameCol && looksLikeBarcode(row[c])) {
+            code = sanitizeBarcode(row[c]);
+            break;
+          }
+        }
+      }
+
+      // Name extraction
+      let name = nameCol !== -1 ? String(row[nameCol] ?? '').trim() : '';
+      if (!looksLikeProductName(name)) {
+        for (let c = 0; c < row.length; c++) {
+          if (c !== barcodeCol && looksLikeProductName(row[c])) {
+            name = String(row[c]).trim();
+            break;
+          }
+        }
+      }
+
+      // Skip row if both code and name are missing
+      if (!code && !name) continue;
+
+      if (!code && name) {
+        code = `AUTO-${r}`;
+      }
+      if (!name && code) {
+        name = `صنف #${code}`;
+      }
+
+      // Quantity
+      let qty = qtyCol !== -1 ? parseCleanNum(row[qtyCol]) : 1;
+      if (qty <= 0) qty = 1;
+
+      // Prices & Costs
+      let cost = costCol !== -1 ? parseCleanNum(row[costCol]) : 0;
+      let price = priceCol !== -1 ? parseCleanNum(row[priceCol]) : 0;
+
+      // Condition
+      const condition = condCol !== -1 ? parseConditionText(row[condCol]) : 'sound';
+
+      // Notes
+      const notes = notesCol !== -1 ? String(row[notesCol] ?? '').trim() : '';
+
+      // Cross-reference with Master Catalog if cost or price or name is missing!
+      const catKey = code.toUpperCase();
+      const masterMatch = masterCatalog[catKey];
+      if (masterMatch) {
+        if (!name || name.startsWith('صنف #') || name.startsWith('AUTO-')) {
+          name = masterMatch.itemName || name;
+        }
+        if (price <= 0 && masterMatch.price > 0) {
+          price = masterMatch.price;
+        }
+        if (cost <= 0 && masterMatch.cost !== undefined && masterMatch.cost > 0) {
+          cost = masterMatch.cost;
+        }
+      }
+
+      // Sensible financial defaults if still missing
+      if (price <= 0 && cost > 0) price = Math.round(cost * 1.5);
+      if (cost <= 0 && price > 0) cost = Math.round(price * 0.65);
+      if (price <= 0 && cost <= 0) {
+        price = 100;
+        cost = 65;
+      }
+
+      const totalCost = cost * qty;
+      const totalSelling = price * qty;
+      const category = masterMatch?.category || 'عام';
+
+      const returnItem: DedicatedReturnItem = {
+        id: `ret-${sheetIdx}-${r}-${Date.now()}`,
+        code: code.toUpperCase(),
+        itemName: name,
+        category,
+        qty: Math.round(qty),
+        costPrice: cost,
+        sellingPrice: price,
+        totalCost,
+        totalSelling,
+        condition,
+        branch: currentBranch,
+        returnNo: currentReturnNo,
+        date: currentDate,
+        notes: notes || undefined,
+        timestamp: Date.now() + r,
+      };
+
+      // Group into slip
+      const slipKey = `${currentBranch.toLowerCase().trim()}___${currentReturnNo.toLowerCase().trim()}`;
+      if (!slipsMap[slipKey]) {
+        slipsMap[slipKey] = {
+          id: `slip-${Object.keys(slipsMap).length + 1}-${Date.now()}`,
+          slipNo: currentReturnNo,
+          branch: currentBranch,
+          date: currentDate,
+          keeper: currentKeeper,
+          notes: `مستورد من شيت مجمع [${workbook.SheetNames[sheetIdx]}]`,
+          items: [returnItem],
+          createdAt: Date.now(),
+        };
+      } else {
+        slipsMap[slipKey].items.push(returnItem);
+      }
+    }
+  });
+
+  return Object.values(slipsMap);
+}
+

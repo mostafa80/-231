@@ -106,6 +106,90 @@ body {
   animation: pulseGlow 2s infinite ease-in-out;
 }
 
+/* Professional Micro-Animations */
+@keyframes modalEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes fadeInFast {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes scanSuccessGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes subtleFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.animate-modal {
+  animation: modalEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fadeIn {
+  animation: fadeInFast 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scan-glow {
+  animation: scanSuccessGlow 0.6s ease-out;
+}
+
+.animate-float {
+  animation: subtleFloat 3s ease-in-out infinite;
+}
+
+@keyframes badgePop {
+  0% { transform: scale(0.9); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes slideDownFade {
+  0% { opacity: 0; transform: translateY(-8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmerGlow {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-pop {
+  animation: badgePop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-slide-down {
+  animation: slideDownFade 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.shimmer-card {
+  background-size: 200% 100%;
+  animation: shimmerGlow 6s infinite ease-in-out;
+}
+
+/* Button & Card Micro-Interactions */
+button, input, select, textarea {
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

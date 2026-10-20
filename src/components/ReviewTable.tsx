@@ -9,8 +9,12 @@ import {
   Edit2,
   Filter,
   CheckCircle2,
+  MessageSquare,
+  Search,
+  X,
 } from 'lucide-react';
 import { Session, ReturnItem, FilterType, Language } from '../types';
+import { normalizeArabic } from '../utils/itemSearch';
 
 interface ReviewTableProps {
   session: Session | null;
@@ -20,6 +24,7 @@ interface ReviewTableProps {
   onCompleteAndExport: () => void;
   onManualSave: () => void;
   onResetSession: () => void;
+  onOpenWhatsApp?: () => void;
   highlightedCode?: string | null;
   lastScannedCode?: string | null;
   lang: Language;
@@ -37,6 +42,7 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
   onCompleteAndExport,
   onManualSave,
   onResetSession,
+  onOpenWhatsApp,
   highlightedCode,
   lastScannedCode,
   lang,
@@ -51,6 +57,7 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
   };
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [tableSearch, setTableSearch] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   const isAr = lang === 'ar';
@@ -89,6 +96,28 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
       const key = item.code.toUpperCase();
       const jard = session.jardData[key];
 
+      // Multi-criteria search filter (last 3-4 barcode digits, price, or item name)
+      if (tableSearch.trim()) {
+        const q = tableSearch.trim();
+        const normQ = normalizeArabic(q);
+        const digits = q.replace(/\D/g, '');
+        const isNum = !isNaN(Number(q)) && q.length > 0;
+        const numQ = isNum ? Number(q) : null;
+
+        const codeLower = (item.code || '').toLowerCase();
+        const itemDigits = (item.code || '').replace(/\D/g, '');
+        const nameNorm = normalizeArabic(item.itemName || '');
+
+        const matchLastDigits = digits.length >= 2 && (itemDigits.endsWith(digits) || codeLower.endsWith(q.toLowerCase()));
+        const matchCode = codeLower.includes(q.toLowerCase());
+        const matchName = nameNorm.includes(normQ);
+        const matchPrice = isNum && numQ !== null && (Math.abs((item.price || 0) - numQ) < 0.01 || String(item.price || 0).startsWith(q));
+
+        if (!matchLastDigits && !matchCode && !matchName && !matchPrice) {
+          return false;
+        }
+      }
+
       // Category filter
       if (selectedCategory !== 'all') {
         const matchMain = item.category === selectedCategory;
@@ -112,6 +141,13 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
       }
       return true;
     }).sort((a, b) => {
+      // When searching inside table, prioritize items originally on the invoice sheet (systemQty > 0)
+      if (tableSearch.trim()) {
+        const isAInv = (a.systemQty || 0) > 0;
+        const isBInv = (b.systemQty || 0) > 0;
+        if (isAInv && !isBInv) return -1;
+        if (!isAInv && isBInv) return 1;
+      }
       // 1. Absolute top priority: Last scanned item appears at index 0 (first row of table)
       if (lastScannedCode) {
         const isALast = a.code.toUpperCase() === lastScannedCode.toUpperCase();
@@ -124,7 +160,7 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
       const timeB = session.jardData[b.code.toUpperCase()]?.time || 0;
       return timeB - timeA;
     });
-  }, [session, selectedCategory, currentFilter, lastScannedCode]);
+  }, [session, selectedCategory, currentFilter, lastScannedCode, tableSearch]);
 
   const totalItems = filteredItems.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
@@ -281,7 +317,7 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
               setSelectedCategory(e.target.value);
               setCurrentPage(1);
             }}
-            className="text-xs font-semibold py-1.5 px-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:border-red-600 focus:ring-1 focus:ring-red-100 outline-hidden cursor-pointer w-full md:w-56"
+            className="text-xs font-semibold py-1.5 px-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:border-red-600 focus:ring-1 focus:ring-red-100 outline-hidden cursor-pointer w-full md:w-52"
           >
             <option value="all">{isAr ? 'كل التصنيفات والأقسام' : 'All Categories'}</option>
             {mainCategories.length > 0 && (
@@ -303,6 +339,37 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
               </optgroup>
             )}
           </select>
+        </div>
+
+        {/* Table Inline Search (Last 3-4 digits, Price, Name) */}
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 rtl:right-2.5 ltr:left-2.5 ltr:right-auto pointer-events-none" />
+          <input
+            type="text"
+            value={tableSearch}
+            onChange={(e) => {
+              setTableSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder={
+              isAr
+                ? 'بحث بالجدول (آخر 3-4 أرقام / سعر / اسم)...'
+                : 'Search table (digits / price / name)...'
+            }
+            className="w-full text-xs font-bold py-1.5 px-2.5 rtl:pr-8 rtl:pl-7 ltr:pl-8 ltr:pr-7 bg-white border border-slate-200 rounded-lg text-slate-800 focus:border-red-600 focus:ring-2 focus:ring-red-100 outline-hidden shadow-2xs"
+          />
+          {tableSearch && (
+            <button
+              type="button"
+              onClick={() => {
+                setTableSearch('');
+                setCurrentPage(1);
+              }}
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 rtl:left-2 rtl:right-auto ltr:right-2 ltr:left-auto cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Filter Pills */}
@@ -514,7 +581,7 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
       </div>
 
       {/* Action Footer Buttons */}
-      <div className="flex flex-wrap items-center justify-center gap-2 pt-4 border-t border-slate-100 mt-3">
+      <div className="flex flex-wrap items-center justify-center gap-2 pt-4 border-t border-slate-100 mt-3 text-[11px]">
         {/* Complete Received & Auto Download Multi-Sheet Excel Button */}
         <button
           type="button"
@@ -547,21 +614,36 @@ export const ReviewTable: React.FC<ReviewTableProps> = ({
         <button
           type="button"
           onClick={onPrintReceipt}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold text-xs bg-slate-900 hover:bg-black text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+          title={isAr ? 'طباعة عادية للفاتورة (Ctrl+P)' : 'Print Receipt (Ctrl+P)'}
+          className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl font-extrabold text-xs bg-slate-900 hover:bg-black text-white shadow-xs transition-all active:scale-95 cursor-pointer"
         >
           <Printer className="w-4 h-4" />
-          <span>{isAr ? 'طباعة عادية 🖨️' : 'Print Receipt 🖨️'}</span>
+          <span>{isAr ? 'طباعة (Ctrl+P) 🖨️' : 'Print (Ctrl+P) 🖨️'}</span>
         </button>
 
         {/* Manual Save */}
         <button
           type="button"
           onClick={onManualSave}
+          title={isAr ? 'حفظ يدوي فوري للبيانات (Ctrl+S)' : 'Save State (Ctrl+S)'}
           className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-extrabold text-xs bg-sky-600 hover:bg-sky-700 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
         >
           <Save className="w-4 h-4" />
-          <span>{isAr ? 'حفظ يدوي' : 'Save State'}</span>
+          <span>{isAr ? 'حفظ (Ctrl+S) 💾' : 'Save (Ctrl+S) 💾'}</span>
         </button>
+
+        {/* WhatsApp Hub Button */}
+        {onOpenWhatsApp && (
+          <button
+            type="button"
+            onClick={onOpenWhatsApp}
+            title={isAr ? 'إرسال التقرير وتسجيل الاستلام عبر الواتساب' : 'WhatsApp Report & Intake'}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl font-extrabold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+          >
+            <MessageSquare className="w-4 h-4 text-emerald-200" />
+            <span>{isAr ? 'واتساب 💬' : 'WhatsApp 💬'}</span>
+          </button>
+        )}
 
         {/* Reset Active Session (تصفير الفعلي) */}
         <button

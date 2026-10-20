@@ -10,8 +10,15 @@ import {
   Minus,
   Loader2,
   Zap,
+  Sparkles,
+  Star,
+  Tag,
+  Banknote,
+  Layers,
+  X,
 } from 'lucide-react';
 import { Session, ReturnItem, ItemCondition, Language } from '../types';
+import { searchItemsWithPriority, SearchMatchResult } from '../utils/itemSearch';
 
 interface ScannerSectionProps {
   session: Session | null;
@@ -20,6 +27,8 @@ interface ScannerSectionProps {
   onConditionChange: (c: ItemCondition) => void;
   autoAdd: boolean;
   onAutoAddChange: (auto: boolean) => void;
+  quickScanQty?: number;
+  onQuickScanQtyChange?: (qty: number) => void;
   onAddItem: (code: string, qty: number, isSubtract: boolean, condition: ItemCondition) => void;
   onUndo: () => void;
   canUndo: boolean;
@@ -36,6 +45,8 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
   onConditionChange,
   autoAdd,
   onAutoAddChange,
+  quickScanQty = 1,
+  onQuickScanQtyChange,
   onAddItem,
   onUndo,
   canUndo,
@@ -44,17 +55,20 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
   hasInvoice,
   hasMaster,
 }) => {
+  const activeQuickScanQty = [1, 3, 6, 12].includes(quickScanQty) ? quickScanQty : 1;
   const [barcode, setBarcode] = useState('');
   const [manualQty, setManualQty] = useState(''); // Initial value is empty as requested
   const [qtyError, setQtyError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<ReturnItem[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchMatchResult[]>([]);
+  const [barcodeSuggestions, setBarcodeSuggestions] = useState<SearchMatchResult[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [matchedItem, setMatchedItem] = useState<ReturnItem | null>(null);
   const [isSearchingBarcode, setIsSearchingBarcode] = useState(false);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
   const isAr = lang === 'ar';
 
   const isInvoiceLoaded = hasInvoice !== undefined ? hasInvoice : Boolean(session && Object.keys(session.inventoryMap).length > 0);
@@ -67,6 +81,7 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
     if (!codeTrim) {
       setMatchedItem(null);
       setIsSearchingBarcode(false);
+      setBarcodeSuggestions([]);
       return;
     }
 
@@ -76,44 +91,43 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
       const item = session?.inventoryMap[key] || masterCatalog[key] || null;
       setMatchedItem(item);
       setIsSearchingBarcode(false);
+
+      // If not an exact match and user typed 2+ digits or chars, generate smart suggestions (invoice first, then master)
+      if (!item && codeTrim.length >= 2) {
+        const suggestions = searchItemsWithPriority(codeTrim, session?.inventoryMap, masterCatalog, 4);
+        setBarcodeSuggestions(suggestions);
+      } else {
+        setBarcodeSuggestions([]);
+      }
     }, 60);
 
     return () => clearTimeout(timer);
   }, [barcode, session, masterCatalog]);
 
-  // Live search inside active invoice + master
+  // Live search inside active invoice + master with Priority Sorting
   useEffect(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (q.length < 2) {
+    const q = searchQuery.trim();
+    if (!q || q.length < 1) {
       setSearchResults([]);
       setShowDropdown(false);
       return;
     }
 
-    const results: ReturnItem[] = [];
-    const seen = new Set<string>();
+    const matches = searchItemsWithPriority(q, session?.inventoryMap, masterCatalog, 25);
+    setSearchResults(matches);
+    setShowDropdown(matches.length > 0);
+  }, [searchQuery, session?.inventoryMap, masterCatalog]);
 
-    const checkList = [
-      ...Object.values(session?.inventoryMap || {}),
-      ...Object.values(masterCatalog || {}),
-    ];
-
-    for (const item of checkList) {
-      if (seen.has(item.code.toUpperCase())) continue;
-      const nameMatch = item.itemName.toLowerCase().includes(q);
-      const catMatch = (item.fullCategory || item.category || '').toLowerCase().includes(q);
-      const codeMatch = item.code.toLowerCase().includes(q);
-
-      if (nameMatch || catMatch || codeMatch) {
-        seen.add(item.code.toUpperCase());
-        results.push(item);
-        if (results.length >= 8) break;
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
       }
-    }
-
-    setSearchResults(results);
-    setShowDropdown(results.length > 0);
-  }, [searchQuery, session, masterCatalog]);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleBarcodeSubmit = (isSubtract: boolean = false) => {
     if (!canScan) {
@@ -127,21 +141,22 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
       return;
     }
 
-    let qty = 1;
+    const activeQuickScanQty = [1, 3, 6, 12].includes(quickScanQty) ? quickScanQty : 1;
+    let qty = activeQuickScanQty;
     if (!autoAdd) {
       if (!manualQty.trim()) {
-        setQtyError(isAr ? '⚠️ يجب إدخال عدد القطع المستلمة بالأرقام (1 إلى 30 قطعة)' : 'Please enter quantity in numbers (1 to 30)');
+        setQtyError(isAr ? '⚠️ يجب إدخال عدد القطع المستلمة بالأرقام (1 إلى 50 قطعة)' : 'Please enter quantity in numbers (1 to 50)');
         qtyInputRef.current?.focus();
         return;
       }
       const parsed = parseInt(manualQty, 10);
       if (isNaN(parsed) || parsed < 1) {
-        setQtyError(isAr ? '⚠️ أدخل رقماً صحيحاً للكمية (من 1 إلى 30)' : 'Enter a valid number (1 to 30)');
+        setQtyError(isAr ? '⚠️ أدخل رقماً صحيحاً للكمية (من 1 إلى 50)' : 'Enter a valid number (1 to 50)');
         qtyInputRef.current?.focus();
         return;
       }
-      if (parsed > 30) {
-        setQtyError(isAr ? '⚠️ أقصى كمية مسموح بإدخالها هي 30 قطعة فقط!' : 'Maximum allowed quantity is 30 pieces!');
+      if (parsed > 50) {
+        setQtyError(isAr ? '⚠️ أقصى كمية مسموح بإدخالها هي 50 قطعة فقط!' : 'Maximum allowed quantity is 50 pieces!');
         qtyInputRef.current?.focus();
         return;
       }
@@ -164,8 +179,9 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
     setBarcode(item.code);
     setSearchQuery('');
     setShowDropdown(false);
+    const activeQuickScanQty = [1, 3, 6, 12].includes(quickScanQty) ? quickScanQty : 1;
     if (autoAdd) {
-      onAddItem(item.code, 1, false, condition);
+      onAddItem(item.code, activeQuickScanQty, false, condition);
       setBarcode('');
       setMatchedItem(null);
       barcodeInputRef.current?.focus();
@@ -204,45 +220,275 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
         </div>
       </div>
 
-      {/* Search Inside Return */}
-      <div className="relative mb-3.5">
-        <label className="block text-xs font-bold text-slate-600 mb-1">
-          {isAr
-            ? '🔍 بحث سريع داخل أصناف الفاتورة الواردة (اسم / باركود / تصنيف):'
-            : '🔍 Quick Search items in this inbound invoice:'}
-        </label>
+      {/* Multi-Criteria Smart Search (Last digits / Price / Name with Priority) */}
+      <div ref={searchContainerRef} className="relative mb-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-1.5">
+          <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <Search className="w-4 h-4 text-red-600" />
+            <span>
+              {isAr
+                ? '🔍 بحث ذكي متقدم (بآخر 3 أو 4 أرقام من الباركود / سعر البيع / اسم المنتج):'
+                : '🔍 Smart Search (Last 3-4 barcode digits / Price / Product Name):'}
+            </span>
+          </label>
+
+          <span className="text-[11px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 self-start sm:self-auto flex items-center gap-1">
+            <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+            <span>{isAr ? 'الأولوية التلقائية للفاتورة الحالية أولاً ثم الماستر' : 'Priority: Active Invoice first, then Master'}</span>
+          </span>
+        </div>
+
+        {/* Feature quick tags */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] text-slate-600 font-bold">
+          <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+            🔢 {isAr ? 'آخر 3 أو 4 أرقام بالباركود (مثال: 842)' : 'Last 3-4 digits'}
+          </span>
+          <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+            💵 {isAr ? 'سعر البيع (مثال: 150 أو 299)' : 'Price'}
+          </span>
+          <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+            🏷️ {isAr ? 'اسم الصنف أو الموديل' : 'Product name'}
+          </span>
+        </div>
+
         <div className="relative">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 rtl:right-3 ltr:left-3 ltr:right-auto" />
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 rtl:right-3 ltr:left-3 ltr:right-auto pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={isAr ? 'اكتب للبحث واختيار الصنف...' : 'Type to search item...'}
-            className="w-full text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 rtl:pr-9 rtl:pl-3 ltr:pl-9 ltr:pr-3 focus:bg-white focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-all outline-hidden"
+            onFocus={() => {
+              if (searchResults.length > 0) setShowDropdown(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && searchResults.length > 0) {
+                e.preventDefault();
+                handleSelectItemFromSearch(searchResults[0].item);
+              } else if (e.key === 'Escape') {
+                setShowDropdown(false);
+              }
+            }}
+            placeholder={
+              isAr
+                ? 'ابحث بآخر 3 أو 4 أرقام من الباركود (مثال: 842)، أو سعر البيع (مثال: 150)، أو اسم الصنف... (Enter لاختيار أول نتيجة)'
+                : 'Search by last 3-4 barcode digits, selling price (e.g. 150), or name... (Press Enter for #1 match)'
+            }
+            className="w-full text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl py-2.5 rtl:pr-9 rtl:pl-8 ltr:pl-9 ltr:pr-8 focus:bg-white focus:border-red-600 focus:ring-4 focus:ring-red-100 transition-all outline-hidden font-bold"
           />
+
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setShowDropdown(false);
+              }}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 rtl:left-2.5 rtl:right-auto ltr:right-2.5 ltr:left-auto p-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* Dropdown search results */}
+        {/* Dropdown search results with Grouped/Prioritized cards */}
         {showDropdown && searchResults.length > 0 && (
-          <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto divide-y divide-slate-100">
-            {searchResults.map((item) => (
-              <div
-                key={item.code}
-                onClick={() => handleSelectItemFromSearch(item)}
-                className="p-2.5 hover:bg-red-50 cursor-pointer flex items-center justify-between gap-3 text-xs transition-colors"
-              >
-                <div>
-                  <div className="font-bold text-slate-900">{item.itemName}</div>
-                  <div className="text-[11px] text-slate-500">{item.fullCategory || item.category}</div>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <span className="font-mono font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-100">
-                    {item.code}
-                  </span>
-                  <div className="text-[11px] text-slate-500 font-semibold">{item.price} ج.م</div>
-                </div>
+          <div className="absolute z-40 left-0 right-0 mt-1.5 bg-white border-2 border-slate-300 rounded-2xl shadow-2xl max-h-96 overflow-y-auto divide-y divide-slate-100 animate-fadeIn">
+            {/* Dropdown Header Stats */}
+            <div className="p-2.5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white border-b border-slate-700 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold sticky top-0 z-10">
+              <span className="text-amber-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  {isAr
+                    ? `عثرنا على ${searchResults.length} نتيجة (الأولوية لشيت الفاتورة • الخيار الأول مميز):`
+                    : `Found ${searchResults.length} matching items (Invoice priority • #1 highlighted):`}
+                </span>
+              </span>
+
+              <div className="flex items-center gap-2 text-[10px]">
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white font-black shadow-2xs">
+                  ⭐ {searchResults.filter((r) => r.source === 'invoice').length} {isAr ? 'بشيت الفاتورة (أولوية 1)' : 'Invoice (Pri 1)'}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-slate-700 text-slate-200 font-bold border border-slate-600">
+                  🏢 {searchResults.filter((r) => r.source === 'master').length} {isAr ? 'بالماستر (أولوية 2)' : 'Master (Pri 2)'}
+                </span>
               </div>
-            ))}
+            </div>
+
+            {/* Results Items */}
+            {searchResults.map((res, idx) => {
+              const item = res.item;
+              const isInvoiceSource = res.source === 'invoice';
+              const isFirstOption = idx === 0;
+              const receivedSoFar = session?.jardData[item.code.toUpperCase()]?.countedQty || 0;
+
+              return (
+                <div
+                  key={`${res.source}_${item.code}`}
+                  onClick={() => handleSelectItemFromSearch(item)}
+                  className={`p-3.5 cursor-pointer flex items-center justify-between gap-3 text-xs transition-all ${
+                    isFirstOption
+                      ? isInvoiceSource
+                        ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white border-y-2 border-l-8 rtl:border-r-8 rtl:border-l-0 border-amber-400 shadow-lg ring-2 ring-amber-400/50'
+                        : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-white border-y-2 border-l-8 rtl:border-r-8 rtl:border-l-0 border-yellow-300 shadow-md'
+                      : isInvoiceSource
+                        ? 'bg-emerald-50/75 hover:bg-emerald-100/90 border-l-4 rtl:border-r-4 rtl:border-l-0 border-emerald-600'
+                        : 'bg-white hover:bg-slate-50 border-l-4 rtl:border-r-4 rtl:border-l-0 border-slate-300'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                      {/* First Option Distinctive Badge */}
+                      {isFirstOption && (
+                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-300 text-slate-950 shadow-xs flex items-center gap-1 animate-pulse">
+                          <span>👑</span>
+                          <span>
+                            {isAr
+                              ? isInvoiceSource
+                                ? 'الخيار الأول المقترح (بشيت الفاتورة) • اضغط Enter'
+                                : 'الخيار الأول المقترح • اضغط Enter'
+                              : 'Top #1 Match • Press Enter'}
+                          </span>
+                        </span>
+                      )}
+
+                      {/* Priority Source Badge */}
+                      {isInvoiceSource ? (
+                        <span
+                          className={`text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                            isFirstOption
+                              ? 'bg-white/20 text-white border border-white/40'
+                              : 'bg-emerald-600 text-white shadow-2xs'
+                          }`}
+                        >
+                          <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
+                          <span>{isAr ? 'موجود بشيت الفاتورة (أولوية 1)' : 'Pri 1: In Invoice Sheet'}</span>
+                        </span>
+                      ) : (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                            isFirstOption
+                              ? 'bg-white/20 text-white border border-white/40'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}
+                        >
+                          <Layers className="w-3 h-3" />
+                          <span>{isAr ? 'أولوية 2: شيت الماستر (صنف عام)' : 'Pri 2: Master Catalog'}</span>
+                        </span>
+                      )}
+
+                      {/* Match Reasons Tags */}
+                      {res.matchReasons.includes('barcode_ends_with') && (
+                        <span
+                          className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                            isFirstOption
+                              ? 'bg-amber-400/30 text-amber-100 border-amber-300/60'
+                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                          }`}
+                        >
+                          🔢 {isAr ? `تطابق أرقام (${res.highlightDigits || item.code})` : `Match (${res.highlightDigits || item.code})`}
+                        </span>
+                      )}
+
+                      {res.matchReasons.includes('price') && (
+                        <span
+                          className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                            isFirstOption
+                              ? 'bg-white/20 text-white border-white/40'
+                              : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          }`}
+                        >
+                          💵 {isAr ? `سعر البيع (${item.price} ج.م)` : `Price (${item.price})`}
+                        </span>
+                      )}
+
+                      {res.matchReasons.includes('name') && (
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                            isFirstOption
+                              ? 'bg-white/20 text-white border-white/40'
+                              : 'bg-purple-100 text-purple-900 border-purple-200'
+                          }`}
+                        >
+                          🏷️ {isAr ? 'تطابق بالاسم' : 'Name match'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div
+                      className={`font-black text-sm sm:text-base truncate ${
+                        isFirstOption ? 'text-white drop-shadow-2xs' : 'text-slate-900'
+                      }`}
+                    >
+                      {item.itemName}
+                    </div>
+
+                    <div
+                      className={`flex flex-wrap items-center gap-2 text-[11px] mt-1 ${
+                        isFirstOption ? 'text-emerald-50 font-semibold' : 'text-slate-500'
+                      }`}
+                    >
+                      <span>{item.fullCategory || item.category || (isAr ? 'عام' : 'General')}</span>
+                      {isInvoiceSource && res.invoiceQty !== undefined && (
+                        <>
+                          <span>•</span>
+                          <span
+                            className={`font-extrabold px-1.5 py-0.2 rounded ${
+                              isFirstOption
+                                ? 'bg-amber-300 text-slate-950'
+                                : 'text-emerald-800 bg-emerald-100'
+                            }`}
+                          >
+                            📦 {isAr ? `كمية الفاتورة: ${res.invoiceQty} قطعة` : `Invoice Qty: ${res.invoiceQty}`}
+                          </span>
+                        </>
+                      )}
+                      {receivedSoFar > 0 && (
+                        <>
+                          <span>•</span>
+                          <span
+                            className={`font-extrabold px-1.5 py-0.2 rounded ${
+                              isFirstOption ? 'bg-white text-emerald-900' : 'bg-sky-100 text-sky-800'
+                            }`}
+                          >
+                            ✅ {isAr ? `تم استلام: ${receivedSoFar}` : `Received: ${receivedSoFar}`}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Price & Code Block */}
+                  <div className="text-right rtl:text-left flex-shrink-0 flex flex-col items-end rtl:items-start gap-1">
+                    <span
+                      className={`font-mono font-black text-xs px-2.5 py-1 rounded-lg border shadow-2xs ${
+                        isFirstOption
+                          ? 'bg-amber-300 text-slate-950 border-amber-200'
+                          : 'text-red-700 bg-white border-red-200'
+                      }`}
+                    >
+                      {item.code}
+                    </span>
+                    <div className={`text-xs font-black ${isFirstOption ? 'text-white' : 'text-slate-900'}`}>
+                      {item.price}{' '}
+                      <span className={`text-[10px] font-semibold ${isFirstOption ? 'text-emerald-100' : 'text-slate-500'}`}>
+                        ج.م
+                      </span>
+                    </div>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                        isFirstOption
+                          ? 'bg-white text-emerald-900 shadow-2xs'
+                          : 'text-red-600 hover:underline'
+                      }`}
+                    >
+                      {autoAdd
+                        ? (isAr ? `مسح فوري (+${activeQuickScanQty}) ⚡` : `Fast Add (+${activeQuickScanQty}) ⚡`)
+                        : (isAr ? 'اختيار لتحديد الكمية 👈' : 'Select item 👈')}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -282,26 +528,70 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
         </div>
       </div>
 
-      {/* Auto-Add Switch */}
-      <div className="flex items-center justify-between bg-red-50/60 border border-red-100 rounded-xl px-3.5 py-2.5 mb-3.5">
-        <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-red-600" />
-          <span className="text-xs font-bold text-red-900">
-            {isAr
-              ? '⚡ وضع المسح السريع (+1 تلقائياً مع كل سكان بالباركود)'
-              : '⚡ Fast Scan Mode (+1 piece automatically on each scan)'}
-          </span>
+      {/* Auto-Add Switch & Quick Scan Step Selector */}
+      <div className="bg-red-50/70 border border-red-200/90 rounded-xl p-3 sm:p-3.5 mb-3.5 space-y-2.5 transition-all">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Zap className={`w-4 h-4 ${autoAdd ? 'text-red-600 animate-pulse' : 'text-slate-400'}`} />
+            <span className="text-xs font-bold text-slate-900">
+              {isAr
+                ? autoAdd
+                  ? `⚡ وضع المسح السريع (+${activeQuickScanQty} تلقائياً مع كل سكان بالباركود)`
+                  : '⚡ وضع المسح السريع (معطّل - إدخال يدوي للكمية)'
+                : autoAdd
+                  ? `⚡ Fast Scan Mode (+${activeQuickScanQty} auto per barcode scan)`
+                  : '⚡ Fast Scan Mode (Disabled - Manual quantity input)'}
+            </span>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+            <input
+              type="checkbox"
+              checked={autoAdd}
+              onChange={(e) => onAutoAddChange(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+          </label>
         </div>
 
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={autoAdd}
-            onChange={(e) => onAutoAddChange(e.target.checked)}
-            className="sr-only peer"
-          />
-          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
-        </label>
+        {/* Quick Scan Step Options: +1, +3, +6, +12 */}
+        {autoAdd && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-red-200/70 animate-fadeIn">
+            <span className="text-xs font-extrabold text-red-950 flex items-center gap-1.5">
+              <span>{isAr ? 'كمية الإضافة السريعة مع كل مسح:' : 'Quick addition per scan:'}</span>
+            </span>
+
+            <div className="flex items-center gap-1 sm:gap-1.5 bg-white p-1 rounded-xl border border-red-200 shadow-2xs">
+              {[
+                { qty: 1, labelAr: '+1 قطعة', labelEn: '+1 pc' },
+                { qty: 3, labelAr: '+3 قطع', labelEn: '+3 pcs' },
+                { qty: 6, labelAr: '+6 قطع (نصف دستة)', labelEn: '+6 pcs (half-doz)' },
+                { qty: 12, labelAr: '+12 قطعة (دستة كاملة)', labelEn: '+12 pcs (doz)' },
+              ].map(({ qty, labelAr, labelEn }) => {
+                const isSelected = activeQuickScanQty === qty;
+                return (
+                  <button
+                    key={qty}
+                    type="button"
+                    onClick={() => onQuickScanQtyChange?.(qty)}
+                    title={isAr ? `تحديد إضافة ${labelAr} تلقائياً مع كل مسح` : `Add ${labelEn} per scan`}
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer select-none active:scale-95 ${
+                      isSelected
+                        ? 'bg-red-600 text-white shadow-xs scale-102 ring-2 ring-red-300'
+                        : 'text-slate-700 bg-slate-50 hover:bg-red-50 hover:text-red-700 border border-slate-200/60'
+                    }`}
+                  >
+                    <span>+{qty}</span>
+                    <span className="hidden sm:inline mr-1 text-[11px] font-semibold opacity-90">
+                      {isAr ? (qty === 1 ? ' قطعة' : qty === 12 ? ' (دستة)' : qty === 6 ? ' (نصف دستة)' : ' قطع') : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Lockout Notice when sheets are missing */}
@@ -392,9 +682,9 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
                   : (isAr ? 'أدخل أو وجه الباركود هنا...' : 'Scan barcode here...')
               }
               autoFocus
-              className={`w-full text-base sm:text-lg font-bold font-mono text-center tracking-wider rounded-xl py-2.5 px-4 transition-all outline-hidden shadow-2xs ${
+              className={`w-full text-[26px] text-[#2672be] font-bold font-mono text-center tracking-wider rounded-xl py-2.5 px-4 transition-all outline-hidden shadow-2xs ${
                 !canScan
-                  ? 'bg-slate-100 text-slate-400 border-2 border-slate-200 cursor-not-allowed'
+                  ? 'bg-slate-100 border-2 border-slate-200 cursor-not-allowed'
                   : 'bg-slate-50 border-2 border-slate-300 focus:bg-white focus:border-red-600 focus:ring-4 focus:ring-red-100'
               }`}
             />
@@ -404,6 +694,83 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
               </div>
             )}
           </div>
+
+          {/* Smart barcode suggestions (e.g. matched by last 3 or 4 digits) */}
+          {barcodeSuggestions.length > 0 && !matchedItem && (
+            <div className="mt-2 p-2.5 bg-amber-50/90 border border-amber-300 rounded-xl space-y-1.5 animate-fadeIn">
+              <div className="flex items-center justify-between text-[11px] font-black text-amber-950">
+                <span className="flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>
+                    {isAr
+                      ? `أصناف تطابق الأرقام (${barcode.trim()}) - الأولوية للفاتورة أولاً:`
+                      : `Items matching (${barcode.trim()}) - Priority: Invoice first:`}
+                  </span>
+                </span>
+                <span className="text-[10px] text-amber-800 font-bold">
+                  {isAr ? 'اضغط على أي صنف لاختياره فوراً' : 'Click to select'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {barcodeSuggestions.map((sug, idx) => {
+                  const isFirst = idx === 0;
+                  return (
+                    <button
+                      key={`${sug.source}_${sug.item.code}`}
+                      type="button"
+                      onClick={() => handleSelectItemFromSearch(sug.item)}
+                      className={`p-2 text-right rtl:text-right ltr:text-left rounded-xl flex items-center justify-between gap-2 text-xs transition-all cursor-pointer shadow-xs active:scale-95 ${
+                        isFirst
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-2 border-amber-400 ring-2 ring-emerald-300'
+                          : 'bg-white border border-amber-200 hover:border-red-500 hover:bg-red-50/50'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1 truncate">
+                          {isFirst && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-300 text-slate-950 flex-shrink-0">
+                              👑 خيار 1
+                            </span>
+                          )}
+                          {sug.source === 'invoice' ? (
+                            <span
+                              className={`text-[9px] font-black px-1.5 py-0.5 rounded flex-shrink-0 ${
+                                isFirst ? 'bg-white/20 text-white' : 'bg-emerald-600 text-white'
+                              }`}
+                            >
+                              ⭐ فاتورة
+                            </span>
+                          ) : (
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                                isFirst ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
+                              }`}
+                            >
+                              🏢 ماستر
+                            </span>
+                          )}
+                          <span className={`font-bold truncate text-[11px] ${isFirst ? 'text-white' : 'text-slate-900'}`}>
+                            {sug.item.itemName}
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        className={`text-right rtl:text-left flex-shrink-0 flex items-center gap-1 font-mono text-[11px] font-bold ${
+                          isFirst ? 'text-amber-300' : 'text-red-700'
+                        }`}
+                      >
+                        <span>{sug.item.code}</span>
+                        <span className={`font-sans text-[10px] ${isFirst ? 'text-emerald-100' : 'text-slate-500'}`}>
+                          ({sug.item.price} ج.م)
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Matched item live preview */}
@@ -440,7 +807,7 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
                 {isAr ? '🔢 الكمية المستلمة (للوضع اليدوي):' : '🔢 Quantity (Manual Mode):'}
               </label>
               <span className="text-[11px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-200">
-                {isAr ? 'أرقام فقط • الحد الأقصى 30 قطعة' : 'Digits only • Max 30 pieces'}
+                {isAr ? 'أرقام فقط • الحد الأقصى 50 قطعة' : 'Digits only • Max 50 pieces'}
               </span>
             </div>
 
@@ -460,9 +827,9 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
                     return;
                   }
                   const num = parseInt(digits, 10);
-                  if (num > 30) {
-                    setManualQty('30');
-                    setQtyError(isAr ? '⚠️ أقصى كمية مسموح بها هي 30 قطعة فقط!' : 'Maximum allowed quantity is 30 pieces!');
+                  if (num > 50) {
+                    setManualQty('50');
+                    setQtyError(isAr ? '⚠️ أقصى كمية مسموح بها هي 50 قطعة فقط!' : 'Maximum allowed quantity is 50 pieces!');
                   } else {
                     setManualQty(digits);
                     setQtyError(null);
@@ -475,7 +842,7 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
                   }
                 }}
                 disabled={!canScan}
-                placeholder={isAr ? 'اكتب عدد القطع بالأرقام (1 إلى 30)...' : 'Type quantity in digits (1 to 30)...'}
+                placeholder={isAr ? 'اكتب عدد القطع بالأرقام (1 إلى 50)...' : 'Type quantity in digits (1 to 50)...'}
                 className="w-full text-base sm:text-lg font-black text-center bg-white border-2 border-amber-400 rounded-xl py-2 px-3 text-slate-900 focus:border-red-600 focus:ring-4 focus:ring-amber-100 transition-all outline-hidden shadow-2xs"
               />
             </div>
@@ -505,7 +872,15 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
             }`}
           >
             <Plus className="w-4 h-4" />
-            <span>{isAr ? 'إضافة استلام' : 'Add Count'}</span>
+            <span>
+              {isAr
+                ? autoAdd
+                  ? `إضافة استلام (+${activeQuickScanQty})`
+                  : 'إضافة استلام'
+                : autoAdd
+                  ? `Add Count (+${activeQuickScanQty})`
+                  : 'Add Count'}
+            </span>
           </button>
 
           <button
@@ -519,13 +894,22 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
             }`}
           >
             <Minus className="w-4 h-4" />
-            <span>{isAr ? 'خصم' : 'Subtract'}</span>
+            <span>
+              {isAr
+                ? autoAdd
+                  ? `خصم (-${activeQuickScanQty})`
+                  : 'خصم'
+                : autoAdd
+                  ? `Subtract (-${activeQuickScanQty})`
+                  : 'Subtract'}
+            </span>
           </button>
 
           <button
             type="button"
             onClick={onUndo}
             disabled={!canUndo}
+            title={isAr ? 'تراجع عن آخر حركة مسح (Ctrl+Z)' : 'Undo last action (Ctrl+Z)'}
             className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl font-extrabold text-xs transition-all active:scale-95 cursor-pointer ${
               canUndo
                 ? 'bg-slate-700 hover:bg-slate-800 text-white shadow-xs'
@@ -533,7 +917,7 @@ export const ScannerSection: React.FC<ScannerSectionProps> = ({
             }`}
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>{isAr ? 'تراجع' : 'Undo'}</span>
+            <span>{isAr ? 'تراجع (Ctrl+Z)' : 'Undo (Ctrl+Z)'}</span>
           </button>
         </div>
 

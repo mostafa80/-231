@@ -59,7 +59,7 @@ export const ImportSection: React.FC<ImportSectionProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 h-[275.25px]">
         {/* Main Returns Sheet Uploader */}
         <div className="lg:col-span-7 bg-rose-50/60 border border-rose-200/80 rounded-xl p-3 sm:p-4 transition-all">
           <label className="block text-xs font-bold text-red-800 mb-1.5 flex items-center gap-1.5">
@@ -102,14 +102,41 @@ export const ImportSection: React.FC<ImportSectionProps> = ({
               ? 'يتعرف البرنامج تلقائياً على اسم الفرع، رقم فاتورة البيع، الأصناف، والكميات المسجلة، ويحسب لك فوراً الفوارق بين كميات الفاتورة والمستلم الفعلي (عجز / زيادة).'
               : 'Automatically detects branch name, invoice #, items, expected quantities, and computes shortages / surpluses instantly.'}
           </p>
+
+          <div className="mt-2.5 p-2 sm:p-2.5 bg-[#d2d2d2] border border-rose-300 rounded-lg text-[11px] text-[#16077e]">
+            <div className="font-bold flex items-center gap-1.5 mb-1 text-[#060606]">
+              <span>📋</span>
+              <span>{isAr ? 'ترتيب أعمدة نموذج فاتورة البيع المعتمد:' : 'Sales Invoice Column Mapping:'}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 font-bold h-[38px] w-[630.156px]">
+              <span className="bg-white px-2 py-0.5 rounded border border-rose-300 font-mono text-red-700">
+                B = Total Price {isAr ? '(الإجمالي)' : ''}
+              </span>
+              <span className="bg-white px-2 py-0.5 rounded border border-rose-300 font-mono text-red-700">
+                C = Item Price {isAr ? '(السعر)' : ''}
+              </span>
+              <span className="bg-white px-2 py-0.5 rounded border border-rose-300 font-mono text-red-700">
+                D = Quantity {isAr ? '(الكمية)' : ''}
+              </span>
+              <span className="bg-white px-2 py-0.5 rounded border border-rose-300 font-mono text-red-700">
+                E = Item Name {isAr ? '(اسم الصنف)' : ''}
+              </span>
+              <span className="bg-white px-2 py-0.5 rounded border border-rose-300 font-mono text-red-700">
+                F = Barcode {isAr ? '(الباركود)' : ''}
+              </span>
+              <span className="text-[#ff0000] font-medium">
+                {isAr ? '• (يتم التغاضي عن أي عمود آخر تلقائياً)' : '• (Any other columns are ignored)'}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Master Catalog Uploader */}
-        <div className="lg:col-span-5 bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 sm:p-4 flex flex-col justify-between">
+        <div className="lg:col-span-5 bg-amber-50/60 border border-[#ff0000] text-[#4d2121] rounded-xl p-3 sm:p-4 flex flex-col justify-between">
           <div>
             <label className="block text-xs font-bold text-amber-900 mb-1.5 flex items-center gap-1.5">
               <FileSpreadsheet className="w-4 h-4 text-amber-700" />
-              <span>{isAr ? 'تحميل شيت ماستر عام للأصناف (Master.xlsx - اختياري):' : 'Master Catalog (Master.xlsx - Optional):'}</span>
+              <span className="bg-[#ffffff] text-[#265626] h-[22px] w-[364.406px] text-center no-underline leading-[17px] text-[15px] inline-block">{isAr ? 'تحميل شيت ماستر عام للأصناف (Master.xlsx - اختياري):' : 'Master Catalog (Master.xlsx - Optional):'}</span>
             </label>
             <input
               ref={masterInputRef}
@@ -119,7 +146,7 @@ export const ImportSection: React.FC<ImportSectionProps> = ({
                 const file = e.target.files?.[0];
                 if (file) onMasterUpload(file);
               }}
-              className="text-xs text-slate-600 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-600 file:text-white hover:file:bg-amber-700 cursor-pointer bg-white border border-amber-200 rounded-lg p-1.5 w-full"
+              className="text-xs text-slate-600 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-600 file:text-white hover:file:bg-amber-700 cursor-pointer bg-[#ffffff] border border-amber-200 rounded-lg p-1.5 w-full"
             />
           </div>
 
@@ -157,16 +184,16 @@ export const ImportSection: React.FC<ImportSectionProps> = ({
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-white/20 border border-white/30 text-rose-50">
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#000000] border border-white/30 text-rose-50">
                       {isAr ? 'فاتورة واردة من المخزن إلى الفرع' : 'Inbound Invoice (Warehouse to Branch)'}
                     </span>
-                    <span className="text-sm font-black tracking-wide font-mono bg-white text-red-700 px-3 py-0.5 rounded-lg shadow-xs">
+                    <span className="text-[20px] font-black tracking-wide font-mono bg-white text-red-700 px-3 py-0.5 rounded-lg shadow-xs">
                       {meta?.returnNo ? `#${meta.returnNo}` : (isAr ? 'بدون رقم' : 'No #')}
                     </span>
                   </div>
                   <div className="text-xs text-rose-100 font-semibold mt-1">
                     {meta?.branch ? (
-                      <span>{isAr ? `الفرع المستلم: ${meta.branch}` : `Branch: ${meta.branch}`}</span>
+                      <span className="text-center text-[16px] font-bold no-underline text-[#ffffff]">{isAr ? `الفرع المستلم: ${meta.branch}` : `Branch: ${meta.branch}`}</span>
                     ) : null}
                     {meta?.date ? <span className="mx-1.5">• {isAr ? `بتاريخ: ${meta.date}` : `Date: ${meta.date}`}</span> : null}
                   </div>
@@ -176,14 +203,14 @@ export const ImportSection: React.FC<ImportSectionProps> = ({
               {/* Big Metrics Grid */}
               <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 bg-black/25 backdrop-blur-xs px-3.5 py-2.5 rounded-xl border border-white/10 self-start lg:self-auto">
                 <div>
-                  <span className="text-[11px] text-rose-200 block font-bold">
+                  <span className="text-[11px] text-[#f1f1f1] block font-bold">
                     {isAr ? 'إجمالي الفاتورة الواردة من المخزن:' : 'Total Inbound Pieces:'}
                   </span>
                   <div className="flex items-baseline gap-1 mt-0.5">
                     <span className="text-xl sm:text-2xl font-black text-white">
                       {totalInvoicePieces.toLocaleString()}
                     </span>
-                    <span className="text-xs font-bold text-rose-200">
+                    <span className="text-center text-[15px] leading-[19px] font-bold text-rose-200">
                       {isAr ? 'قطعة' : 'pcs'}
                     </span>
                   </div>

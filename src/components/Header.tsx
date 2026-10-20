@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Globe, Sparkles, FileSpreadsheet, WifiOff, Zap, Palette, Laptop, FilePlus2 } from 'lucide-react';
+import { Volume2, VolumeX, Globe, Sparkles, FileSpreadsheet, WifiOff, Zap, Palette, Laptop, FilePlus2, MessageSquare } from 'lucide-react';
 import { Language } from '../types';
 import { SoMuchLogo } from './SoMuchLogo';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -17,6 +17,7 @@ interface HeaderProps {
   onOpenOfflineGuide: () => void;
   onOpenThemeSettings: () => void;
   onOpenExeConverter: () => void;
+  onOpenWhatsApp?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,6 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenOfflineGuide,
   onOpenThemeSettings,
   onOpenExeConverter,
+  onOpenWhatsApp,
 }) => {
   const isAr = lang === 'ar';
 
@@ -46,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-[#0e1f2b]">
               <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
                 {isAr ? 'برنامج الاستلامات للفروع' : 'Branch Reception Hub'}
               </h1>
@@ -127,6 +129,18 @@ export const Header: React.FC<HeaderProps> = ({
             <WifiOff className="w-3.5 h-3.5 text-emerald-600" />
             <span className="hidden sm:inline">{isAr ? 'دليل الأوفلاين ⚡' : 'Offline Guide ⚡'}</span>
           </button>
+
+          {/* WhatsApp Direct Hub Button */}
+          {onOpenWhatsApp && (
+            <button
+              onClick={onOpenWhatsApp}
+              title={isAr ? 'إرسال التقرير وتسجيل استلام بالواتساب' : 'WhatsApp Hub'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300 transition-all active:scale-95 cursor-pointer shadow-xs"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{isAr ? 'واتساب 💬' : 'WhatsApp 💬'}</span>
+            </button>
+          )}
 
           {/* Load Sample Demo */}
           <button
